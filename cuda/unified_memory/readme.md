@@ -3,7 +3,7 @@ The benefit for unified memory, in terms of performance, is that it avoids deep 
 Reference:
 https://github.com/parallel-forall/code-samples/tree/master/posts/unified-memory
 
-According to CUDA Programming Guide
+####According to CUDA Programming Guide
 <i>
 On a multi-GPU system with peer-to-peer support, where multiple GPUs support 
 managed memory, <b>the physical storage is created on the GPU</b> which is active at 
