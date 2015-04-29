@@ -1,11 +1,10 @@
 The benefit for unified memory, in terms of performance, is that it avoids deep copies. <br>
-=
 
 Reference:
 https://github.com/parallel-forall/code-samples/tree/master/posts/unified-memory
 
 
-According to CUDA Programming Guide, here is the description of using "cudaMallocManaged()".<br>
+According to CUDA Programming Guide
 --
 <i>
 On a multi-GPU system with peer-to-peer support, where multiple GPUs support 
