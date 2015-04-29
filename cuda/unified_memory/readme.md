@@ -4,7 +4,7 @@ Reference:
 https://github.com/parallel-forall/code-samples/tree/master/posts/unified-memory
 
 
-#According to CUDA Programming Guide, here is the description of using "cudaMallocManaged()".<br>
+###According to CUDA Programming Guide, here is the description of using "cudaMallocManaged()".<br>
 <i>
 On a multi-GPU system with peer-to-peer support, where multiple GPUs support 
 managed memory, <b>the physical storage is created on the GPU</b> which is active at 
