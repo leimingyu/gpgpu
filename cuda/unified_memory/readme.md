@@ -5,6 +5,7 @@ https://github.com/parallel-forall/code-samples/tree/master/posts/unified-memory
 
 
 ####According to CUDA Programming Guide
+-
 
 <i>
 On a multi-GPU system with peer-to-peer support, where multiple GPUs support 
