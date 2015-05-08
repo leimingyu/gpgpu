@@ -1,4 +1,4 @@
-ompiled Object files
+# Compiled Object files
 *.slo
 *.lo
 *.o
@@ -39,4 +39,4 @@ cmake_install.cmake
 *.swp
 *~
 
-#
+
