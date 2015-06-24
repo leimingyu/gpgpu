@@ -13,8 +13,10 @@ g++ -I. -I/usr/local/cuda/include/ -I/usr/local/cuda/samples/common/inc -L/usr/l
 Only kernels are in the kernel.cu file.
 All other codes are in main.cu file.
 
+<i>
 nvcc -c kernel.cu -o kernel.o
 nvcc -I. -I/usr/local/cuda/include/ -I/usr/local/cuda/samples/common/inc -L/usr/local/cuda/lib64 kernel.o main.cu -o main -lcudart
+</i>
 
 [3] cmake with gtest
 cmake version with gtest for kernel checking.
