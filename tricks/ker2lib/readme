@@ -1,0 +1,22 @@
+Compile kernels to shared libraries/objects.
+Link them to the final executables.
+
+Three versions are provided here.
+[1] kern_func
+The kernels and host functions are in the same cu file.
+The main function is in main.cpp.
+
+nvcc -c kernel.cu -o kernel.o
+g++ -I. -I/usr/local/cuda/include/ -I/usr/local/cuda/samples/common/inc -L/usr/local/cuda/lib64 kernel.o main.cpp -o main -lcudart
+
+[2] kern
+Only kernels are in the kernel.cu file.
+All other codes are in main.cu file.
+
+nvcc -c kernel.cu -o kernel.o
+nvcc -I. -I/usr/local/cuda/include/ -I/usr/local/cuda/samples/common/inc -L/usr/local/cuda/lib64 kernel.o main.cu -o main -lcudart
+
+[3] cmake with gtest
+cmake version with gtest for kernel checking.
+
+
