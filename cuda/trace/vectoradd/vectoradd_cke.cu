@@ -29,13 +29,19 @@
  * number of elements numElements.
  */
 __global__ void
-vectorAdd(const float *A, const float *B, float *C, int numElements)
-{
+vectorAdd(const float *A, const float *B, float *C, int elenum, int streamid) {
     int i = blockDim.x * blockIdx.x + threadIdx.x;
+	unsigned long start_ind = elenum * streamid;
 
-    if (i < numElements)
-    {
-        C[i] = A[i] + B[i];
+    if (i < elenum) {
+	//	float a = 1.1;
+	//	int k=0;
+	//	while(k<i)
+	//	{
+	//		a *= 1.2;	
+	//		k++;	
+	//	}
+        C[start_ind + i] = A[start_ind + i] + B[start_ind + i];
     }
 }
 
@@ -43,13 +49,33 @@ vectorAdd(const float *A, const float *B, float *C, int numElements)
  * Host main routine
  */
 int
-main(void)
-{
+main(int argc, char **argv) {
+	int num_streams;
+
+    if (argc == 1) {
+		num_streams = 1;	
+	}
+
+    if (argc == 2) {
+		num_streams = atoi(argv[1]);
+	}
+
+    if (argc > 2) {
+        printf("To many argugments!\nRun ./vectoradd_cke streams_number\n");
+        exit(1);
+    }
+
+	printf("Use %d cuda streams.\n", num_streams);
+
+	cudaStream_t *streams;
+	streams = (cudaStream_t *) malloc(sizeof(cudaStream_t) * num_streams);
+
     // Error code to check return values for CUDA calls
     cudaError_t err = cudaSuccess;
 
     // Print the vector length to be used, and compute its size
-    int numElements = 50000;
+	int elenum =  50000;
+    int numElements = elenum * num_streams;
 
     size_t size = numElements * sizeof(float);
     printf("[Vector addition of %d elements]\n", numElements);
@@ -63,19 +89,18 @@ main(void)
     // Allocate the host output vector C
     float *h_C = (float *)malloc(size);
 
+
     // Verify that allocations succeeded
-    if (h_A == NULL || h_B == NULL || h_C == NULL)
-    {
+    if (h_A == NULL || h_B == NULL || h_C == NULL) {
         fprintf(stderr, "Failed to allocate host vectors!\n");
         exit(EXIT_FAILURE);
     }
 
     // Initialize the host input vectors
-    for (int i = 0; i < numElements; ++i)
-    {
-        h_A[i] = rand()/(float)RAND_MAX;
-        h_B[i] = rand()/(float)RAND_MAX;
-    }
+	for (int i = 0; i < numElements; ++i) {
+		h_A[i] = rand()/(float)RAND_MAX;
+		h_B[i] = rand()/(float)RAND_MAX;
+	}
 
     // Allocate the device input vector A
     float *d_A = NULL;
@@ -112,36 +137,43 @@ main(void)
     printf("Copy input data from the host memory to the CUDA device\n");
     err = cudaMemcpy(d_A, h_A, size, cudaMemcpyHostToDevice);
 
-    if (err != cudaSuccess)
-    {
+    if (err != cudaSuccess) {
         fprintf(stderr, "Failed to copy vector A from host to device (error code %s)!\n", cudaGetErrorString(err));
         exit(EXIT_FAILURE);
     }
 
     err = cudaMemcpy(d_B, h_B, size, cudaMemcpyHostToDevice);
 
-    if (err != cudaSuccess)
-    {
+    if (err != cudaSuccess) {
         fprintf(stderr, "Failed to copy vector B from host to device (error code %s)!\n", cudaGetErrorString(err));
         exit(EXIT_FAILURE);
     }
 
+
     // Launch the Vector Add CUDA Kernel
     int threadsPerBlock = 256;
-    int blocksPerGrid =(numElements + threadsPerBlock - 1) / threadsPerBlock;
+    int blocksPerGrid =(elenum + threadsPerBlock - 1) / threadsPerBlock;
     printf("CUDA kernel launch with %d blocks of %d threads\n", blocksPerGrid, threadsPerBlock);
-    vectorAdd<<<blocksPerGrid, threadsPerBlock>>>(d_A, d_B, d_C, numElements);
-    err = cudaGetLastError();
 
-    if (err != cudaSuccess)
-    {
-        fprintf(stderr, "Failed to launch vectorAdd kernel (error code %s)!\n", cudaGetErrorString(err));
-        exit(EXIT_FAILURE);
-    }
+	for(int n=0; n<num_streams; n++)
+		cudaStreamCreate(&streams[n]);
 
-    // Copy the device result vector in device memory to the host result vector
-    // in host memory.
-    printf("Copy output data from the CUDA device to the host memory\n");
+	// Run vectoAdd for each stream with the same configuration
+	for(int n=0; n<num_streams; n++)
+	{
+		vectorAdd<<<blocksPerGrid, threadsPerBlock,0, streams[n]>>>(d_A, d_B, d_C, elenum, n);
+		err = cudaGetLastError();
+
+		if (err != cudaSuccess) {
+			fprintf(stderr, "Failed to launch vectorAdd kernel (error code %s)!\n", cudaGetErrorString(err));
+			exit(EXIT_FAILURE);
+		}
+
+	}
+
+	// Copy the device result vector in device memory to the host result vector
+	// in host memory.
+	printf("Copy output data from the CUDA device to the host memory\n");
     err = cudaMemcpy(h_C, d_C, size, cudaMemcpyDeviceToHost);
 
     if (err != cudaSuccess)
@@ -150,11 +182,10 @@ main(void)
         exit(EXIT_FAILURE);
     }
 
+
     // Verify that the result vector is correct
-    for (int i = 0; i < numElements; ++i)
-    {
-        if (fabs(h_A[i] + h_B[i] - h_C[i]) > 1e-5)
-        {
+    for (int i = 0; i < numElements; ++i) {
+        if (fabs(h_A[i] + h_B[i] - h_C[i]) > 1e-5) {
             fprintf(stderr, "Result verification failed at element %d!\n", i);
             exit(EXIT_FAILURE);
         }
@@ -187,6 +218,11 @@ main(void)
         exit(EXIT_FAILURE);
     }
 
+	// free cuda streams
+	for(int n=0; n<num_streams; n++)
+		cudaStreamDestroy(streams[n]);
+	free(streams);
+
     // Free host memory
     free(h_A);
     free(h_B);
@@ -200,8 +236,7 @@ main(void)
     // flushed before the application exits
     err = cudaDeviceReset();
 
-    if (err != cudaSuccess)
-    {
+    if (err != cudaSuccess) {
         fprintf(stderr, "Failed to deinitialize the device! error=%s\n", cudaGetErrorString(err));
         exit(EXIT_FAILURE);
     }

@@ -36,14 +36,14 @@ endif
 #-----------------------------------------------------------------------------#
 all: build 
 
-build: vectoradd 
+build: vectoradd vectoradd_cke
 
 vectoradd: vectoradd.cu
 	$(NVC) $(NV_INC) $(NV_LIB) $(NVCC_FLAGS) $(GENCODE_FLAGS) -o $@ $^ $(LIB_LINKER)
 
-run: build 
-	./vectoradd
+vectoradd_cke: vectoradd_cke.cu
+	$(NVC) $(NV_INC) $(NV_LIB) $(NVCC_FLAGS) $(GENCODE_FLAGS) -o $@ $^ $(LIB_LINKER)
 
 .PHONY: clean
 clean:
-	rm -rf test 
+	rm -rf vectoradd vectoradd_cke 
