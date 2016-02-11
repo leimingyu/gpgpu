@@ -1,11 +1,7 @@
 #include <stdio.h>
 #include <cuda.h>
-//#include "magma_operators.h" 
-// includes, project
-//#include "flops.h"
 #include "magma.h"
 #include "magma_lapack.h"
-//#include "testings.h"
 
 int main (int argc, char ** argv){
 	magma_init();				// initialize Magma
@@ -60,6 +56,8 @@ int main (int argc, char ** argv){
 	gpu_time = magma_wtime() - gpu_time; 
 	printf (" magma_sgesv time : %7.5f sec.\n", gpu_time); // time
 	printf (" upper left corner of the magma solution :\n");
+
+	//fixme: use magma_sgetrf_gpu()
 
 	magma_sprint ( 4 , 4 , c, m ); // part of the Magma solution
 
