@@ -1,13 +1,15 @@
+MGMDIR=/opt/magma-2.0.0
+
 INC:=
-INC+=-I/opt/magma-2.0.0-beta3/include
-INC+=-I/opt/magma-2.0.0-beta3/control
-INC+=-I/usr/local/cuda-7.0/include
+INC+=-I$(MGMDIR)/include
+INC+=-I$(MGMDIR)/control
+INC+=-I/usr/local/cuda/include
 
 LIB:=
-LIB+=-L/opt/magma-2.0.0-beta3/lib
-LIB+=-L/opt/magma-2.0.0-beta3/testing
-LIB+=-L/opt/magma-2.0.0-beta3/testing/lin
-LIB+=-L/usr/local/cuda-7.0/lib64
+LIB+=-L$(MGMDIR)/lib
+LIB+=-L$(MGMDIR)/testing
+LIB+=-L$(MGMDIR)/testing/lin
+LIB+=-L/usr/local/cuda/lib64
 LIB+=-L/opt/openblas/lib
 
 OPT:=
