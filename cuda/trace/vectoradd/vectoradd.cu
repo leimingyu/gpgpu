@@ -45,6 +45,14 @@ vectorAdd(const float *A, const float *B, float *C, int numElements)
 int
 main(void)
 {
+	// set device
+	int device = 1;
+	cudaSetDevice(device);
+
+	cudaDeviceProp prop;
+	cudaGetDeviceProperties(&prop, device);
+	printf("device %d : %s\n", device, prop.name);	
+
     // Error code to check return values for CUDA calls
     cudaError_t err = cudaSuccess;
 
@@ -130,7 +138,20 @@ main(void)
     int threadsPerBlock = 256;
     int blocksPerGrid =(numElements + threadsPerBlock - 1) / threadsPerBlock;
     printf("CUDA kernel launch with %d blocks of %d threads\n", blocksPerGrid, threadsPerBlock);
+
+	// Create cuda events
+	cudaEvent_t start, stop;
+	cudaEventCreate(&start);
+	cudaEventCreate(&stop);
+
+	cudaEventRecord(start);
+
     vectorAdd<<<blocksPerGrid, threadsPerBlock>>>(d_A, d_B, d_C, numElements);
+
+	cudaEventRecord(stop);
+
+
+
     err = cudaGetLastError();
 
     if (err != cudaSuccess)
@@ -149,6 +170,14 @@ main(void)
         fprintf(stderr, "Failed to copy vector C from device to host (error code %s)!\n", cudaGetErrorString(err));
         exit(EXIT_FAILURE);
     }
+
+
+	// 
+	cudaEventSynchronize(stop);
+	float milliseconds = 0;
+	cudaEventElapsedTime(&milliseconds, start, stop);
+	printf("Kernel run time : %f ms\n" , milliseconds);
+
 
     // Verify that the result vector is correct
     for (int i = 0; i < numElements; ++i)
