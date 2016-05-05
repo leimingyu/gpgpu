@@ -1,0 +1,12 @@
+__global__ void testFunction(float* matrix1, float* matrix2, float* output_array1, float* output_array2, int n){
+  int idx = blockIdx.x*blockDim.x+threadIdx.x;
+  float dataFromM1, dataFromM2;
+  output_array1[idx] = 0.0;
+  output_array2[idx] = 0.0;
+  for(int i = 0; i < n; i++){
+	dataFromM1 = matrix1[idx+i*n];
+	dataFromM2 = matrix2[idx+i*n];
+	output_array1[idx] += dataFromM1*dataFromM1*dataFromM1*dataFromM1*dataFromM1*dataFromM1*dataFromM1*dataFromM1*dataFromM1*dataFromM1*dataFromM1*dataFromM1*dataFromM1*dataFromM1;
+	output_array2[idx] += dataFromM2*dataFromM2*dataFromM2*dataFromM2*dataFromM2*dataFromM2*dataFromM2*dataFromM2*dataFromM2*dataFromM2*dataFromM2*dataFromM2*dataFromM2*dataFromM2;
+  }
+}
