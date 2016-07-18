@@ -1,4 +1,4 @@
-CUDA_DIR = /usr/local/cuda-7.5
+CUDA_DIR = /usr/local/cuda
 
 GCC ?= g++
 NVC = $(CUDA_DIR)/bin/nvcc  -ccbin $(GCC)

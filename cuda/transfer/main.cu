@@ -6,6 +6,8 @@ https://devblogs.nvidia.com/parallelforall/how-optimize-data-transfers-cuda-cc/
 #include <assert.h>
 #include <cuda_runtime.h>
 
+#define ITERS  10
+
 inline
 cudaError_t checkCuda(cudaError_t result)
 {
@@ -20,7 +22,8 @@ cudaError_t checkCuda(cudaError_t result)
 void run_pageable(unsigned int nElements)
 {
 	const unsigned int bytes = nElements * sizeof(float);
-	printf("\nTransfer %u floats, size %f (MiB)\n", nElements, bytes / (1024.f * 1024.f));
+	printf("\nTransfer %u floats, size %f (MiB)\n", nElements, 
+			bytes / (1024.f * 1024.f));
 
 	float *h_a = (float*)malloc(bytes);
 	float *h_b = (float*)malloc(bytes);
@@ -37,19 +40,27 @@ void run_pageable(unsigned int nElements)
 
 	// host to device
 	checkCuda( cudaEventRecord(startEvent, 0) );
-	checkCuda( cudaMemcpy(d_a, h_a, bytes, cudaMemcpyHostToDevice) );
+	for (int i = 0; i < ITERS; i++)	
+		checkCuda( cudaMemcpy(d_a, h_a, bytes, cudaMemcpyHostToDevice) );
 	checkCuda( cudaEventRecord(stopEvent, 0) );
 	checkCuda( cudaEventSynchronize(stopEvent) );
 	checkCuda( cudaEventElapsedTime(&time, startEvent, stopEvent) );
-	printf("  Host to Device bandwidth (GB/s): %f\n", bytes * 1e-6 / time);
+	printf("  Host to Device bandwidth (GB/s): %f\n", 
+			bytes * 1e-6 * (float)(ITERS) / time);
+
+	checkCuda(cudaDeviceSynchronize());
 
 	// device to host
 	checkCuda( cudaEventRecord(startEvent, 0) );
-	checkCuda( cudaMemcpy(h_b, d_a, bytes, cudaMemcpyDeviceToHost) );
+	for (int i = 0; i < ITERS; i++)	
+		checkCuda( cudaMemcpy(h_b, d_a, bytes, cudaMemcpyDeviceToHost) );
 	checkCuda( cudaEventRecord(stopEvent, 0) );
 	checkCuda( cudaEventSynchronize(stopEvent) );
 	checkCuda( cudaEventElapsedTime(&time, startEvent, stopEvent) );
-	printf("  Device to Host bandwidth (GB/s): %f\n", bytes * 1e-6 / time);
+	printf("  Device to Host bandwidth (GB/s): %f\n", 
+			bytes * 1e-6 * (float)(ITERS) / time);
+
+	checkCuda(cudaDeviceSynchronize());
 
 	for (int i = 0; i < nElements; ++i) {
 		if (h_a[i] != h_b[i]) {
@@ -66,7 +77,8 @@ void run_pageable(unsigned int nElements)
 void run_pinned(unsigned int nElements)
 {
 	const unsigned int bytes = nElements * sizeof(float);
-	printf("\nTransfer %u floats, size %f (MiB)\n", nElements, bytes / (1024.f * 1024.f));
+	printf("\nTransfer %u floats, size %f (MiB)\n", nElements, 
+			bytes / (1024.f * 1024.f));
 
 	float *h_a, *h_b;
 	cudaMallocHost((void**)&h_a, bytes);
@@ -85,19 +97,25 @@ void run_pinned(unsigned int nElements)
 
 	// host to device
 	checkCuda( cudaEventRecord(startEvent, 0) );
-	checkCuda( cudaMemcpy(d_a, h_a, bytes, cudaMemcpyHostToDevice) );
+	for (int i = 0; i < ITERS; i++)	
+		checkCuda( cudaMemcpy(d_a, h_a, bytes, cudaMemcpyHostToDevice) );
 	checkCuda( cudaEventRecord(stopEvent, 0) );
 	checkCuda( cudaEventSynchronize(stopEvent) );
 	checkCuda( cudaEventElapsedTime(&time, startEvent, stopEvent) );
-	printf("  Host to Device bandwidth (GB/s): %f\n", bytes * 1e-6 / time);
+	printf("  Host to Device bandwidth (GB/s): %f\n", 
+			bytes * 1e-6 * (float)(ITERS) / time);
+
+	checkCuda(cudaDeviceSynchronize());
 
 	// device to host
 	checkCuda( cudaEventRecord(startEvent, 0) );
-	checkCuda( cudaMemcpy(h_b, d_a, bytes, cudaMemcpyDeviceToHost) );
+	for (int i = 0; i < ITERS; i++)	
+		checkCuda( cudaMemcpy(h_b, d_a, bytes, cudaMemcpyDeviceToHost) );
 	checkCuda( cudaEventRecord(stopEvent, 0) );
 	checkCuda( cudaEventSynchronize(stopEvent) );
 	checkCuda( cudaEventElapsedTime(&time, startEvent, stopEvent) );
-	printf("  Device to Host bandwidth (GB/s): %f\n", bytes * 1e-6 / time);
+	printf("  Device to Host bandwidth (GB/s): %f\n", 
+			bytes * 1e-6 * (float)(ITERS) / time);
 
 	for (int i = 0; i < nElements; ++i) {
 		if (h_a[i] != h_b[i]) {
@@ -105,6 +123,8 @@ void run_pinned(unsigned int nElements)
 			break;
 		}
 	}
+
+	checkCuda(cudaDeviceSynchronize());
 
 	cudaFreeHost(h_a);
 	cudaFreeHost(h_b);
@@ -114,7 +134,8 @@ void run_pinned(unsigned int nElements)
 void run_um(unsigned int nElements)
 {
 	const unsigned int bytes = nElements * sizeof(float);
-	printf("\nTransfer %u floats, size %f (MiB)\n", nElements, bytes / (1024.f * 1024.f));
+	printf("\nTransfer %u floats, size %f (MiB)\n", nElements, 
+			bytes / (1024.f * 1024.f));
 
 	float *h_a, *h_b;
 	cudaMallocManaged((void**)&h_a, bytes);
@@ -133,19 +154,27 @@ void run_um(unsigned int nElements)
 
 	// host to device
 	checkCuda( cudaEventRecord(startEvent, 0) );
-	checkCuda( cudaMemcpy(d_a, h_a, bytes, cudaMemcpyHostToDevice) );
+	for (int i = 0; i < ITERS; i++)	
+		checkCuda( cudaMemcpy(d_a, h_a, bytes, cudaMemcpyHostToDevice) );
 	checkCuda( cudaEventRecord(stopEvent, 0) );
 	checkCuda( cudaEventSynchronize(stopEvent) );
 	checkCuda( cudaEventElapsedTime(&time, startEvent, stopEvent) );
-	printf("  Host to Device bandwidth (GB/s): %f\n", bytes * 1e-6 / time);
+	printf("  Host(um) to Device bandwidth (GB/s): %f\n", 
+			bytes * 1e-6 * (float)(ITERS) / time);
 
-	// device to host
+	checkCuda(cudaDeviceSynchronize());
+
+	// device to host ( um )
 	checkCuda( cudaEventRecord(startEvent, 0) );
-	checkCuda( cudaMemcpy(h_b, d_a, bytes, cudaMemcpyDeviceToHost) );
+	for (int i = 0; i < ITERS; i++)	
+		checkCuda( cudaMemcpy(h_b, d_a, bytes, cudaMemcpyDeviceToHost) );
 	checkCuda( cudaEventRecord(stopEvent, 0) );
 	checkCuda( cudaEventSynchronize(stopEvent) );
 	checkCuda( cudaEventElapsedTime(&time, startEvent, stopEvent) );
-	printf("  Device to Host bandwidth (GB/s): %f\n", bytes * 1e-6 / time);
+	printf("  Device to Host(um) bandwidth (GB/s): %f\n", 
+			bytes * 1e-6 * (float)(ITERS) / time);
+
+	checkCuda(cudaDeviceSynchronize());
 
 	for (int i = 0; i < nElements; ++i) {
 		if (h_a[i] != h_b[i]) {
@@ -153,6 +182,46 @@ void run_um(unsigned int nElements)
 			break;
 		}
 	}
+
+
+	// device to device ( um  )
+	checkCuda( cudaEventRecord(startEvent, 0) );
+	for (int i = 0; i < ITERS; i++)	
+		checkCuda( cudaMemcpy(h_b, d_a, bytes, cudaMemcpyDeviceToDevice) );
+	checkCuda( cudaEventRecord(stopEvent, 0) );
+	checkCuda( cudaEventSynchronize(stopEvent) );
+	checkCuda( cudaEventElapsedTime(&time, startEvent, stopEvent) );
+	printf("  Device to Device (um) bandwidth (GB/s): %f\n", 
+			bytes * 1e-6 * (float)(ITERS) / time);
+
+	checkCuda(cudaDeviceSynchronize());
+
+	// host (um) to host (um)
+	checkCuda( cudaEventRecord(startEvent, 0) );
+	for (int i = 0; i < ITERS; i++)	
+		checkCuda( cudaMemcpy(h_b, h_a, bytes, cudaMemcpyHostToHost) );
+	checkCuda( cudaEventRecord(stopEvent, 0) );
+	checkCuda( cudaEventSynchronize(stopEvent) );
+	checkCuda( cudaEventElapsedTime(&time, startEvent, stopEvent) );
+	printf("  Host (um) to Host (um) bandwidth (GB/s): %f\n", 
+			bytes * 1e-6 * (float)(ITERS) / time);
+
+	checkCuda(cudaDeviceSynchronize());
+
+
+	// device (um) to device (um)
+	checkCuda( cudaEventRecord(startEvent, 0) );
+	for (int i = 0; i < ITERS; i++)	
+		checkCuda( cudaMemcpy(h_b, h_a, bytes, cudaMemcpyDeviceToDevice) );
+	checkCuda( cudaEventRecord(stopEvent, 0) );
+	checkCuda( cudaEventSynchronize(stopEvent) );
+	checkCuda( cudaEventElapsedTime(&time, startEvent, stopEvent) );
+	printf("  Device (um) to Device (um) bandwidth (GB/s): %f\n", 
+			bytes * 1e-6 * (float)(ITERS) / time);
+
+	checkCuda(cudaDeviceSynchronize());
+
+
 
 	cudaFree(h_a);
 	cudaFree(h_b);
@@ -183,6 +252,8 @@ int main() {
 	printf("\n-------------\n unified memory\n-------------\n");
 	for(int i=0; i<6; i++)
 		run_um(test_size[i]);	
+
+	cudaDeviceReset();
 
 	return 0;
 }
