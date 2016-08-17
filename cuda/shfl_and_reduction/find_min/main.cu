@@ -56,7 +56,7 @@ __global__ void reduction_min_v1_part1 (float *data, float *partial)
 
 	// sum up the 32 threads
 	for (int i=16; i>0; i>>=1 ) {
-		value = fminf( value, __shfl_xor(value, i, 32) );
+		value = fminf( value, __shfl_down(value, i, 32) );
 	}
 
 	if( lane_id == 0){
@@ -144,7 +144,7 @@ __global__ void reduction_min_v2 (float *data, const int warp_num, float *result
 
 	// sum up the 32 threads
 	for (int i=16; i>0; i>>=1 ) {
-		value = fminf( value, __shfl_xor(value, i, 32) );
+		value = fminf( value, __shfl_down(value, i, 32) );
 	}
 
 	if(lane_id == 0) {
