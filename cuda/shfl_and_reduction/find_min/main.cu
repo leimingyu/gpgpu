@@ -76,12 +76,12 @@ __global__ void reduction_min_v1_part2 (float *partialdata, const int cols, floa
 	result[0] = min_data;
 }
 
-void gpu_min()
+void gpu_min_test1()
 {
 	printf("\n\nparallel reduction using shuffle - min op:\n\n");
 
 	// allocation
-	int N = 64;
+	int N = 96;
 	size_t bytes = N * sizeof(float);
 	float *data;
 	cudaMallocManaged((void**)&data, bytes);
@@ -120,6 +120,87 @@ void gpu_min()
 }
 
 
+__global__ void reduction_min_v2 (float *data, const int warp_num, float *result)
+{
+	extern __shared__ float sdata[];
+
+	uint gx = threadIdx.x + __umul24(blockDim.x, blockIdx.x);
+
+	//int lane_id = threadIdx.x & 0x1F;
+	uint lane_id;
+	asm("mov.u32 %0,%laneid;" : "=r"(lane_id));
+
+	/// warning:
+	///				warp id is not exact in order
+	//uint warp_id;
+	//asm("mov.u32 %0,%warpid;" : "=r"(warp_id));
+
+	uint warp_id;
+	warp_id = threadIdx.x >> 5;
+
+	// printf("thread: %d, lane_id: %d, warp_id: %d\n", gx, lane_id, warp_id);
+
+	float value = data[gx];
+
+	// sum up the 32 threads
+	for (int i=16; i>0; i>>=1 ) {
+		value = fminf( value, __shfl_xor(value, i, 32) );
+	}
+
+	if(lane_id == 0) {
+		//partial[blockIdx.x] = value;
+		sdata[warp_id] = value;
+	}
+
+	__syncthreads();
+
+	if(gx == 0)
+	{
+		float min_data = sdata[0];
+		
+		/// notes : use define to unroll each case
+		for(int i=1; i<warp_num; i++) {
+			if(min_data > sdata[i]) 
+				min_data = sdata[i];
+		}
+
+		result[blockIdx.x] = min_data;
+	}
+}
+
+
+void gpu_min_test2()
+{
+	printf("\n\nparallel reduction using shuffle - min op:  using 1 block \n\n");
+
+	// allocation
+	int N = 96;
+	size_t bytes = N * sizeof(float);
+	float *data;
+	cudaMallocManaged((void**)&data, bytes);
+
+	float *result;
+	cudaMallocManaged((void**)&result, sizeof(float));
+
+	// init
+	for(int i=0; i<N; i++) {
+		data[i] = (float) (N - i);
+		//printf("%d : %f\n", i, data[i]);
+	}
+
+
+	dim3 Blkdim = dim3(32 * BLK(N, 32), 1, 1);
+	dim3 Grddim = dim3(1, 1, 1);
+
+	size_t sm_size =  BLK(N, 32) * sizeof(float);
+	reduction_min_v2 <<< Grddim, Blkdim, sm_size >>> (data, BLK(N, 32), result);
+
+	print_2d_array(result, 1, 1, "result");
+
+	// release
+	cudaFreeHost(data);
+	cudaFreeHost(result);
+}
 
 
 int main(int argc, char *argv[])
@@ -145,9 +226,12 @@ int main(int argc, char *argv[])
 	}
 
 
-	// scheme 1: load data to 32 x 32 (register matrix)
-	// sum up the block and atomically add the value globally 
-	gpu_min();
+	gpu_min_test1();
+
+
+	gpu_min_test2();
+
+
 
 	cudaDeviceReset();
 }
