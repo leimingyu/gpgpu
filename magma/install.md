@@ -54,7 +54,8 @@ endif
 
 copy the files to /opt dir and set up the path in ~/.bashrc
 ```
+sudo cp -r magma-2.0.2 /opt/magma-2.0.2
 
-export PATH=$PATH:/opt/magma-2.0.0/include                                      
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/magma-2.0.0/lib
+export PATH=$PATH:/opt/magma-2.0.2/include                                      
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/magma-2.0.2/lib
 ```
