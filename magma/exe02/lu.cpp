@@ -8,6 +8,7 @@ int main (int argc, char ** argv){
 
 	real_Double_t gpu_time , cpu_time ;
 
+
 	magma_int_t *piv , info ;	// piv - array of indices of inter -
 	magma_int_t m = 2*8192;		// changed rows ; a,r - mxm matrices
 	magma_int_t n = 100;		// b,c,c1 - mxn matrices
