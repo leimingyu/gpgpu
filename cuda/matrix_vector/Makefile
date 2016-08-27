@@ -43,7 +43,8 @@ CC          = g++
 NVCC        = nvcc 
 
 #-------- magma -----------------------------------------#
-MAGMA_DIR = /opt/magma-2.0.2
+#MAGMA_DIR = /opt/magma-2.0.2
+MAGMA_DIR = /opt/magma-2.0.0
 
 MAGMA_INC :=
 MAGMA_INC += $(CU_INC)
@@ -54,7 +55,8 @@ MAGMA_LD += $(CU_LD)
 MAGMA_LD += -L$(MAGMA_DIR)/lib
 
 MAGMA_LIBS := 
-MAGMA_LIBS += $(CULIBS) -lmagma -lmagma_sparse 
+#MAGMA_LIBS += $(CULIBS) -lmagma -lmagma_sparse 
+MAGMA_LIBS += $(CULIBS) -lmagma -llapack# -lopenblas
 
 MAGMA_FLAGS = $(CUFLAGS) -DADD_
 
@@ -81,4 +83,4 @@ magma_main: $(MAGMA_SRC)
 #---------------------------------------------------------------------
 clean:
 	rm -rf *.o gmon.out \
-		cuda_main cublas_main
+		cuda_main cublas_main magma_main

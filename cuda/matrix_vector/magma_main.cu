@@ -71,7 +71,7 @@ void test(int rows, int cols)
 	// copy memory to device
 	magma_ssetmatrix(m, n, a, m, d_a, m);
 	magma_ssetvector(n, b, 1, d_b, 1);
-	magma_ssetvector(n, c, 1, d_c, 1);
+	magma_ssetvector(m, c, 1, d_c, 1);
 
 	// start timing
 	gpu_time = magma_wtime();
@@ -102,14 +102,14 @@ int main(int argc, char **argv) {
 	magma_init();
 
 	// 10K
-	test(5,   6);
-	//test(100,   100);
+	//test(5,   6);
+	test(100,   100);
 
 	// 1K x 1K  = 1M
-	//test(1000,  1000);
+	test(1000,  1000);
 
 	// 10K x 10K = 100M
-	//test(10000, 10000);
+	test(10000, 10000);
 
     return(0);
 }
