@@ -12,6 +12,11 @@ sudo vim /etc/ld.so.conf.d/openblas.conf
 add /opt/openblas/lib
 sudo ldconfig
 ```
+Install lapack
+```
+sudo apt-get install liblapacke-dev liblapack-dev liblapack-doc liblapack3 liblapacke liblapacke-dev
+```
+
 In the bashrc file, I add the openblas source dir there, including the cuda dir.
 
 ```{engine='bash'}
