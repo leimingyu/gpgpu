@@ -35,6 +35,8 @@ void init2D(float *array, int rows, int cols, float value)
 
 void test(int rows, int cols)
 {
+	magma_init();
+
 	real_Double_t gpu_time;
 
 	magma_int_t m = rows;
@@ -74,13 +76,19 @@ void test(int rows, int cols)
 	magma_ssetvector(m, c, 1, d_c, 1);
 
 	// start timing
-	gpu_time = magma_wtime();
+
+	//cpu_time = magma_wtime();
+
+	// gpu timing => http://icl.cs.utk.edu/magma/forum/viewtopic.php?f=2&t=1181
+	gpu_time = magma_sync_wtime(NULL);
 
 	// kernel
-	magma_sgemv(MagmaNoTrans, m, n, alpha, d_a, m, d_b, 1, beta, d_c, 1);
+	//magma_sgemv(MagmaNoTrans, m, n, alpha, d_a, m, d_b, 1, beta, d_c, 1);
+	magmablas_sgemv(MagmaNoTrans, m, n, alpha, d_a, m, d_b, 1, beta, d_c, 1);
 
 	// end timing
-	gpu_time = magma_wtime() - gpu_time;                                        
+	//gpu_time = magma_wtime() - gpu_time;                                        
+	gpu_time = magma_sync_wtime(NULL) - gpu_time;
 	printf ("magma gpu execution time : %7.5f sec.\n", gpu_time); // time
 
 
@@ -99,7 +107,6 @@ void test(int rows, int cols)
 
 
 int main(int argc, char **argv) {
-	magma_init();
 
 	// 10K
 	//test(5,   6);
@@ -109,7 +116,7 @@ int main(int argc, char **argv) {
 	test(1000,  1000);
 
 	// 10K x 10K = 100M
-	test(10000, 10000);
+	//test(10000, 10000);
 
     return(0);
 }
