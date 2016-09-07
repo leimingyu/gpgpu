@@ -227,6 +227,82 @@ void test(int rows, int cols)
 }
 
 
+void test_v1(int rows, int cols)
+{
+	cudaEvent_t startEvent, stopEvent;
+	checkCudaErrors( cudaEventCreate(&startEvent) );
+	checkCudaErrors( cudaEventCreate(&stopEvent) );
+
+	// host
+	float *N;
+	float *beq;
+	float *Nbeq;
+
+	checkCudaErrors(cudaMallocHost((void **)&N,    rows * cols * FLT_SIZE));
+	checkCudaErrors(cudaMallocHost((void **)&beq,  cols * FLT_SIZE));
+	checkCudaErrors(cudaMallocHost((void **)&Nbeq, rows * FLT_SIZE));
+
+	// device
+	float *d_N;
+	float *d_beq;
+	float *d_Nbeq;
+
+	checkCudaErrors(cudaMalloc((void **)&d_N,    rows * cols * FLT_SIZE));
+	checkCudaErrors(cudaMalloc((void **)&d_beq,  cols * FLT_SIZE));
+	checkCudaErrors(cudaMalloc((void **)&d_Nbeq, rows * FLT_SIZE));
+
+    // kernel configuration 
+    dim3 Blk_part1 = dim3(128, 1, 1);                                           
+    dim3 Grd_part1 = dim3(25, 1, 1);
+
+	// init
+	init2D(N,   rows, cols, 0.2f);
+	init2D(beq, 1,    cols, 0.1f);
+
+
+	// start gpu timing
+	cudaEventRecord(startEvent);
+
+	// kernel
+	kernel_sgemv_v1 <<< Grd_config, Blk_config>>>(rows, 
+			cols, 
+			d_N,
+			d_beq,
+			d_Nbeq);
+
+__global__ void kernel_sgemv_v1 (const int rows,
+		const int cols,
+		const float* __restrict__ A,
+		const float* __restrict__ B,
+		float* __restrict__ C)
+{
+	// 128 x 5
+	__shared__ float sdata[640]; 
+
+
+
+}
+
+	// end of gpu timing
+	cudaEventRecord(stopEvent);
+	cudaEventSynchronize(stopEvent); 
+
+	float milliseconds = 0;
+	cudaEventElapsedTime(&milliseconds, startEvent, stopEvent);
+	cout << milliseconds / 1000.f << endl;
+
+	//runtime = wtime() - timing;
+	//cout << runtime << endl;
+
+	// release
+	if (N!= NULL)				checkCudaErrors(cudaFreeHost(N));
+	if (beq!= NULL)				checkCudaErrors(cudaFreeHost(beq));
+	if (Nbeq!= NULL)			checkCudaErrors(cudaFreeHost(Nbeq));
+
+	if (d_N!= NULL)				checkCudaErrors(cudaFree(d_N));
+	if (d_beq!= NULL) 			checkCudaErrors(cudaFree(d_beq));
+	if (d_Nbeq!= NULL)			checkCudaErrors(cudaFree(d_Nbeq));
+}
 
 int main(int argc, char **argv) {
 
@@ -235,7 +311,8 @@ int main(int argc, char **argv) {
 	printf("Device: %s\n", prop.name);
 
 	// 10K
-	test(100,   100);
+	//test(100,   100);
+	test_v1(100,   100);
 
 	// 1K x 1K  = 1M
 	//test(1000,  1000);

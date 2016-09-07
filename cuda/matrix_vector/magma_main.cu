@@ -113,7 +113,7 @@ int main(int argc, char **argv) {
 	test(100,   100);
 
 	// 1K x 1K  = 1M
-	test(1000,  1000);
+	//test(1000,  1000);
 
 	// 10K x 10K = 100M
 	//test(10000, 10000);
