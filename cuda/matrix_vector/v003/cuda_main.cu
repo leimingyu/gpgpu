@@ -63,6 +63,23 @@ void d2h_print1d(float *d_data, float *h_data, const int rows)
 	printf("\n");
 }
 
+int check(float *d_data, float *h_data, const int rows, const int cols)
+{
+	float cpu = cols * 0.02;
+	cudaMemcpy(h_data, d_data, sizeof(float) * rows, cudaMemcpyDeviceToHost);
+
+	int correct = 1;
+	for(int i=0; i<rows; i++) {
+		if(h_data[i] != cpu) {
+			fprintf(stderr, "result doesn't match! pos : %d, gpu %f , cpu %f\n", 
+					i, h_data[i], cpu);
+			correct = 0;
+			break;
+		}
+	}
+	return correct;
+}
+
 void h2d_copy(float *h_data, float *d_data, int len)
 {
 	cudaMemcpy(d_data, h_data, sizeof(float) * len, cudaMemcpyHostToDevice);
@@ -81,132 +98,210 @@ inline int BLK(int number, int blksize)
 // constant memory
 //__constant__ float const_mem[16000];
 
-
-
-__global__ void kernel_sgemv_v1a_01 (const int rows,
+//----------------------------------------------------------------------------//
+// 
+//----------------------------------------------------------------------------//
+/*
+__global__ void kernel_sgemv_v1a (const int rows,
 		const int cols,
 		const int col_iters,
+		const int stride,
 		const float* __restrict__ A,
 		const float* __restrict__ B,
 		float* __restrict__ C)
 {
-	__shared__ float sb[32];
-	//__shared__ float sb[16];
-
-	int gx = threadIdx.x;
-	int gy = threadIdx.y + __mul24(blockIdx.y, blockDim.y); // rows
+	int gx  = threadIdx.x;
+	int gy  = threadIdx.y + __mul24(blockIdx.y, blockDim.y); // rows
+	int gy1 = gy + stride; 
 
 	int lane_id = threadIdx.x & 0x1F;
 
+	__shared__ float bs[1024];
 
-	float tmp = 0.f;
-	int row_idx = gy * cols;
+	// use gy to load B to shared memory 
+	if(lane_id == 0 && gy < cols) {
+		bs[gy] = B[gy];	
+	}
 
+	__syncthreads();
+	
 
+//	if (lane_id == 0) {
+//		printf("gridDim.y : %d, blockDim.y : %d\n", gridDim.y, blockDim.y);
+//	}
 
+	int row_idx, row_idx1;
+	float tmp, tmp1;
+
+	row_idx  = gy * cols;
+	row_idx1 = gy1 * cols;
+
+	tmp = 0.f;
+	tmp1 = 0.f;
 	for(int i=0; i<col_iters; i++)
 	{
 		int curr_col = gx + i * 32;
-		//int curr_col = gx + i * 16;
-
-		// load B to shared memory
-		if(threadIdx.y == 0) {
-			sb[threadIdx.x] = B[curr_col];
-		}
-		__syncthreads();
-
 		if (curr_col < cols) {
-			tmp += A[row_idx + curr_col] * sb[threadIdx.x];
+			//tmp  += A[row_idx + curr_col] * B[curr_col];
+			//tmp1 += A[row_idx1 + curr_col] * B[curr_col];
+			tmp  += A[row_idx + curr_col] * bs[curr_col];
+			tmp1 += A[row_idx1 + curr_col] * bs[curr_col];
 		}
 	}
 
+	// warp reduction on tmp	
 	tmp += __shfl_down(tmp, 16, 32);                                      
 	tmp += __shfl_down(tmp,  8, 32);                                      
 	tmp += __shfl_down(tmp,  4, 32);                                      
 	tmp += __shfl_down(tmp,  2, 32);                                      
 	tmp += __shfl_down(tmp,  1, 32);                                      
-	/*
-	tmp += __shfl_down(tmp,  8, 16);                                      
-	tmp += __shfl_down(tmp,  4, 16);                                      
-	tmp += __shfl_down(tmp,  2, 16);                                      
-	tmp += __shfl_down(tmp,  1, 16);                                      
-	*/
 
 	if(lane_id == 0) {
-		C[gy] = tmp;
-		//printf("%f\n", tmp);
+		C[gy]  = tmp;
+	}
+
+	// warp reduction on tmp	
+	tmp1 += __shfl_down(tmp1, 16, 32);                                      
+	tmp1 += __shfl_down(tmp1,  8, 32);                                      
+	tmp1 += __shfl_down(tmp1,  4, 32);                                      
+	tmp1 += __shfl_down(tmp1,  2, 32);                                      
+	tmp1 += __shfl_down(tmp1,  1, 32);                                      
+
+	if(lane_id == 0) {
+		C[gy1] = tmp1;
 	}
 }
+*/
 
-void test_v1a_01(int rows, int cols)
+
+__global__ void kernel_sgemv_v1a (const int rows,
+		const int cols,
+		const int col_iters,
+		//const int stride,
+		const float* __restrict__ A,
+		const float* __restrict__ B,
+		float* __restrict__ C)
+{
+	//int gx  = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
+	int gx  = threadIdx.x;
+	int gy  = threadIdx.y + __mul24(blockIdx.y, blockDim.y); // rows
+	//int gy1 = gy + stride; 
+
+	int lane_id = threadIdx.x & 0x1F;
+
+	__shared__ float bs[1024];
+
+	// use ly to load B to shared memory 
+	if(threadIdx.y == 0) 
+	{
+		for(int i=0; i<col_iters; i++)
+		{
+			int curr_col = gx + i * 32;
+			if (curr_col < cols) {
+				bs[curr_col] = B[curr_col];	
+			}
+		}
+		//printf("%f\n", bs[gy]);
+	}
+	__syncthreads();
+
+
+	int row_idx; 
+	//int row_idx1;
+	float tmp; 
+	//float tmp1;
+
+	row_idx  = gy * cols;
+	//row_idx1 = gy1 * cols;
+
+	tmp = 0.f;
+	//tmp1 = 0.f;
+	for(int i=0; i<col_iters; i++)
+	{
+		int curr_col = gx + i * 32;
+		if (curr_col < cols) {
+			//tmp  += A[row_idx + curr_col] * B[curr_col];
+			//tmp1 += A[row_idx1 + curr_col] * B[curr_col];
+			tmp  += A[row_idx + curr_col] * bs[curr_col];
+			//printf("%f\n", bs[curr_col]);
+			//tmp1 += A[row_idx1 + curr_col] * bs[curr_col];
+		}
+	}
+
+	// warp reduction on tmp	
+	tmp += __shfl_down(tmp, 16, 32);                                      
+	tmp += __shfl_down(tmp,  8, 32);                                      
+	tmp += __shfl_down(tmp,  4, 32);                                      
+	tmp += __shfl_down(tmp,  2, 32);                                      
+	tmp += __shfl_down(tmp,  1, 32);                                      
+
+	if(lane_id == 0) {
+		C[gy]  = tmp;
+	}
+
+}
+void test_v1a(int rows, int cols)
 {
 	cudaEvent_t startEvent, stopEvent;
 	checkCudaErrors( cudaEventCreate(&startEvent) );
 	checkCudaErrors( cudaEventCreate(&stopEvent) );
-
 	// host
 	float *A;
 	float *B;
 	float *C;
-
 	checkCudaErrors(cudaMallocHost((void **)&A, 	rows * cols * FLT_SIZE));
 	checkCudaErrors(cudaMallocHost((void **)&B, 	cols * FLT_SIZE));
 	checkCudaErrors(cudaMallocHost((void **)&C, 	rows * FLT_SIZE));
-
 	// init
 	init2D(A, rows, cols, 0.2f);
 	init1D(B, cols, 0.1f);
-
 	// dump
 	//print2D(A, rows, cols);
 	//print1D(B, cols);
-
 	// device
 	float *d_A;
 	float *d_B;
 	float *d_C;
-
 	checkCudaErrors(cudaMalloc((void **)&d_A, 	rows * cols * FLT_SIZE));
 	checkCudaErrors(cudaMalloc((void **)&d_B, 	cols * FLT_SIZE));
 	checkCudaErrors(cudaMalloc((void **)&d_C, 	rows * FLT_SIZE));
-
 	// copy data to device
 	h2d_copy(A, d_A, rows * cols);
 	h2d_copy(B, d_B, cols);
 	h2d_copy(C, d_C, cols);
-
-
-
 	// start gpu timing
 	cudaEventRecord(startEvent);
-
 	//--------------------------------------------------------------------------
 	// kernel
 	//--------------------------------------------------------------------------
 
-    dim3 Blk_config = dim3(32, 4, 1);                                           
-    dim3 Grd_config = dim3(1, BLK(rows, 4), 1);
+	// each thread on the row, do twice work load
+    dim3 Blk_config = dim3(32, 8, 1);                                           
+    //dim3 Grd_config = dim3(1, BLK(rows/2, 4), 1);
+    dim3 Grd_config = dim3(1, BLK(rows, 8), 1);
 
-	kernel_sgemv_v1a_01 <<< Grd_config, Blk_config>>>(rows, 
+	//printf("\ny dim -- block size %d grid size %d\n", Blk_config.y, Grd_config.y);
+	//int stride_dist = Blk_config.y * Grd_config.y;
+
+	kernel_sgemv_v1a <<< Grd_config, Blk_config>>>(rows, 
 			cols, 
 			BLK(cols,32),
+			//stride_dist,
 			d_A,
 			d_B,
 			d_C);
-
-
-
 	// end of gpu timing
 	cudaEventRecord(stopEvent);
 	cudaEventSynchronize(stopEvent); 
-
-	//d2h_print1d(d_C, C, rows);
 
 	float milliseconds = 0;
 	cudaEventElapsedTime(&milliseconds, startEvent, stopEvent);
 	cout << milliseconds << " (ms)" << endl;
 
-
+	//d2h_print1d(d_C, C, rows);
+	if (check(d_C, C, rows, cols))	{
+		printf("success!\n");
+	}
 
 
 	// release
@@ -218,14 +313,12 @@ void test_v1a_01(int rows, int cols)
 	if (d_B != NULL) 			checkCudaErrors(cudaFree(d_B));
 	if (d_C != NULL)			checkCudaErrors(cudaFree(d_C));
 }
+
 int main(int argc, char **argv) {
 
 	cudaDeviceProp prop;
 	checkCudaErrors( cudaGetDeviceProperties(&prop, 0) );
 	printf("Device: %s\n", prop.name);
-
-	// warm-up
-	test_v1a(100,   100);
 
 
 	// 10K
@@ -238,140 +331,12 @@ int main(int argc, char **argv) {
 	// lanch a 2d grid, where x is on column with fixed warp size 32
 	//test_v1a(50,   50);
 
-	test_v1a(100,   100);
+	// warm-up
+	test_v1a(100,   50);
+	test_v1a(100,   50);
 	//test_v1a(1000,   50);
 	//test_v1a(100,   100);
-
-	// v1a_01 : register blocking
-	//test_v1a_01(100, 100);
-
-
-
-
-	//test_v1b(100,   100);
-	//test_v1c(100,   150);
-
-
-	// 1K x 1K  = 1M
-	//test(1000,  1000);
-
-	// 10K x 10K = 100M
-	//test(10000, 10000);
 
     return(0);
 }
 
-//----------------------------------------------------------------------------//
-// 
-//----------------------------------------------------------------------------//
-__global__ void kernel_sgemv_v1a (const int rows,
-		const int cols,
-		const int col_iters,
-		const float* __restrict__ A,
-		const float* __restrict__ B,
-		float* __restrict__ C)
-{
-	//uint gx = threadIdx.x + __umul24(blockIdx.x, blockDim.x); // cols
-	int gx = threadIdx.x;
-	//int gx = threadIdx.x + __mul24(blockIdx.x, blockDim.x); // cols
-	int gy = threadIdx.y + __mul24(blockIdx.y, blockDim.y); // rows
-
-	int lane_id = threadIdx.x & 0x1F;
-
-	float tmp = 0.f;
-	int row_idx = gy * cols;
-	for(int i=0; i<col_iters; i++)
-	{
-		int curr_col = gx + i * 32;
-		if (curr_col < cols)
-			tmp += A[row_idx + curr_col] * B[curr_col];
-	}
-
-	// warp reduction on tmp	
-	tmp += __shfl_down(tmp, 16, 32);                                      
-	tmp += __shfl_down(tmp,  8, 32);                                      
-	tmp += __shfl_down(tmp,  4, 32);                                      
-	tmp += __shfl_down(tmp,  2, 32);                                      
-	tmp += __shfl_down(tmp,  1, 32);                                      
-
-	if(lane_id == 0) {
-		C[gy] = tmp;
-	}
-}
-
-void test_v1a(int rows, int cols)
-{
-	cudaEvent_t startEvent, stopEvent;
-	checkCudaErrors( cudaEventCreate(&startEvent) );
-	checkCudaErrors( cudaEventCreate(&stopEvent) );
-
-	// host
-	float *A;
-	float *B;
-	float *C;
-
-	checkCudaErrors(cudaMallocHost((void **)&A, 	rows * cols * FLT_SIZE));
-	checkCudaErrors(cudaMallocHost((void **)&B, 	cols * FLT_SIZE));
-	checkCudaErrors(cudaMallocHost((void **)&C, 	rows * FLT_SIZE));
-
-	// init
-	init2D(A, rows, cols, 0.2f);
-	init1D(B, cols, 0.1f);
-
-	// dump
-	//print2D(A, rows, cols);
-	//print1D(B, cols);
-
-	// device
-	float *d_A;
-	float *d_B;
-	float *d_C;
-
-	checkCudaErrors(cudaMalloc((void **)&d_A, 	rows * cols * FLT_SIZE));
-	checkCudaErrors(cudaMalloc((void **)&d_B, 	cols * FLT_SIZE));
-	checkCudaErrors(cudaMalloc((void **)&d_C, 	rows * FLT_SIZE));
-
-	// copy data to device
-	h2d_copy(A, d_A, rows * cols);
-	h2d_copy(B, d_B, cols);
-	h2d_copy(C, d_C, cols);
-
-
-
-	// start gpu timing
-	cudaEventRecord(startEvent);
-
-	//--------------------------------------------------------------------------
-	// kernel
-	//--------------------------------------------------------------------------
-    dim3 Blk_config = dim3(32, 4, 1);                                           
-    dim3 Grd_config = dim3(1, BLK(rows, 4), 1);
-
-	kernel_sgemv_v1a <<< Grd_config, Blk_config>>>(rows, 
-			cols, 
-			BLK(cols,32),
-			d_A,
-			d_B,
-			d_C);
-
-
-
-	// end of gpu timing
-	cudaEventRecord(stopEvent);
-	cudaEventSynchronize(stopEvent); 
-
-	//d2h_print1d(d_C, C, rows);
-
-	float milliseconds = 0;
-	cudaEventElapsedTime(&milliseconds, startEvent, stopEvent);
-	cout << milliseconds << " (ms)" << endl;
-
-	// release
-	if (A != NULL)				checkCudaErrors(cudaFreeHost(A));
-	if (B != NULL)				checkCudaErrors(cudaFreeHost(B));
-	if (C != NULL)				checkCudaErrors(cudaFreeHost(C));
-
-	if (d_A != NULL)			checkCudaErrors(cudaFree(d_A));
-	if (d_B != NULL) 			checkCudaErrors(cudaFree(d_B));
-	if (d_C != NULL)			checkCudaErrors(cudaFree(d_C));
-}

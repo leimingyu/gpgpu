@@ -1,6 +1,6 @@
 .KEEP_STATE:
 
-all: cuda cublas magma
+all: cuda
 
 DFLAGS      =
 
@@ -63,25 +63,12 @@ MAGMA_FLAGS = $(CUFLAGS) -DADD_
 
 
 # --------  CUDA Version -------------------------------------
-CUDA_SRC = cuda_main.cu cuda_wtime.cu
+CUDA_SRC = cuda_main.cu 
 cuda: cuda_main
 cuda_main: $(CUDA_SRC) 
 	$(NVCC) $(CUFLAGS) $(CU_INC) $(CU_LD) $(GENCODE_FLAGS) -o $@ $(CUDA_SRC) $(CULIBS)
 
-# --------  CUBLAS Version -------------------------------------
-CUBLAS_SRC = cublas_main.cu cublas_wtime.cu
-cublas: cublas_main
-cublas_main: $(CUBLAS_SRC) 
-	$(NVCC) $(CUFLAGS) $(CU_INC) $(CU_LD) $(GENCODE_FLAGS) -o $@ $(CUBLAS_SRC) $(CULIBS) -lcublas
-
-
-# -------- MAGMA  Version -------------------------------------
-MAGMA_SRC = magma_main.cu magma_wtime.cu
-magma: magma_main
-magma_main: $(MAGMA_SRC) 
-	$(NVCC) $(MAGMA_FLAGS) $(MAGMA_INC) $(MAGMA_LD)  $(GENCODE_FLAGS) -o $@ $(MAGMA_SRC) $(MAGMA_LIBS)
-
 #---------------------------------------------------------------------
 clean:
 	rm -rf *.o gmon.out \
-		cuda_main cublas_main magma_main
+		cuda_main
