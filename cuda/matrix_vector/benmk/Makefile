@@ -1,6 +1,7 @@
 .KEEP_STATE:
 
-all: cublas cuda_v001
+all: cublas_main cuda_v001 cuda_v002 cuda_v003 cuda_v004 cuda_v005 \
+	cuda_v006 cuda_v007 cuda_v008
 
 DFLAGS      =
 
@@ -61,18 +62,35 @@ MAGMA_LIBS += $(CULIBS) -lmagma -llapack# -lopenblas
 
 MAGMA_FLAGS = $(CUFLAGS) -DADD_
 
+# --------  CUBLAS Version -------------------------------------
+cublas_main: cublas_main.cu 
+	$(NVCC) $(CUFLAGS) $(CU_INC) $(CU_LD) $(GENCODE_FLAGS) -o $@ $+ $(CULIBS) -lcublas
+
 
 # --------  CUDA Version -------------------------------------
-CUDA_SRC = cuda_v001.cu 
-cuda_v001: $(CUDA_SRC) 
-	$(NVCC) $(CUFLAGS) $(CU_INC) $(CU_LD) $(GENCODE_FLAGS) -o $@ $(CUDA_SRC) $(CULIBS)
+cuda_v001: cuda_v001.cu 
+	$(NVCC) $(CUFLAGS) $(CU_INC) $(CU_LD) $(GENCODE_FLAGS) -o $@ $+ $(CULIBS)
 
-# --------  CUBLAS Version -------------------------------------
-CUBLAS_SRC = cublas_main.cu 
-cublas: cublas_main
-cublas_main: $(CUBLAS_SRC) 
-	$(NVCC) $(CUFLAGS) $(CU_INC) $(CU_LD) $(GENCODE_FLAGS) -o $@ $(CUBLAS_SRC) $(CULIBS) -lcublas
+cuda_v002: cuda_v002.cu 
+	$(NVCC) $(CUFLAGS) $(CU_INC) $(CU_LD) $(GENCODE_FLAGS) -o $@ $+ $(CULIBS)
 
+cuda_v003: cuda_v003.cu 
+	$(NVCC) $(CUFLAGS) $(CU_INC) $(CU_LD) $(GENCODE_FLAGS) -o $@ $+ $(CULIBS)
+
+cuda_v004: cuda_v004.cu 
+	$(NVCC) $(CUFLAGS) $(CU_INC) $(CU_LD) $(GENCODE_FLAGS) -o $@ $+ $(CULIBS)
+
+cuda_v005: cuda_v005.cu 
+	$(NVCC) $(CUFLAGS) $(CU_INC) $(CU_LD) $(GENCODE_FLAGS) -o $@ $+ $(CULIBS)
+
+cuda_v006: cuda_v006.cu 
+	$(NVCC) $(CUFLAGS) $(CU_INC) $(CU_LD) $(GENCODE_FLAGS) -o $@ $+ $(CULIBS)
+
+cuda_v007: cuda_v007.cu 
+	$(NVCC) $(CUFLAGS) $(CU_INC) $(CU_LD) $(GENCODE_FLAGS) -o $@ $+ $(CULIBS)
+
+cuda_v008: cuda_v008.cu 
+	$(NVCC) $(CUFLAGS) $(CU_INC) $(CU_LD) $(GENCODE_FLAGS) -o $@ $+ $(CULIBS)
 
 # -------- MAGMA  Version -------------------------------------
 #MAGMA_SRC = magma_main.cu magma_wtime.cu
@@ -84,4 +102,11 @@ cublas_main: $(CUBLAS_SRC)
 clean:
 	rm -rf *.o gmon.out \
 		cublas_main \
-		cuda_v001
+		cuda_v001 \
+		cuda_v002 \
+		cuda_v003 \
+		cuda_v004 \
+		cuda_v005 \
+		cuda_v006 \
+		cuda_v007 \
+		cuda_v008

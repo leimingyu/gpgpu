@@ -70,7 +70,8 @@ int check(float *d_data, float *h_data, const int rows, const int cols)
 
 	int correct = 1;
 	for(int i=0; i<rows; i++) {
-		if(h_data[i] != cpu) {
+		//if(h_data[i] != cpu) {
+		if(fabs(h_data[i]-cpu) > 1e-6){
 			fprintf(stderr, "result doesn't match! pos : %d, gpu %f , cpu %f\n", 
 					i, h_data[i], cpu);
 			correct = 0;
@@ -251,10 +252,7 @@ __global__ void kernel_sgemv_v1a (const int rows,
 	int gx  = threadIdx.x;
 	int gy  = threadIdx.y + __mul24(blockIdx.y, blockDim.y); // rows
 
-	// 2x work
-	//gy = gy + gy;
-
-	// 4x
+	// 4x work
 	gy = (gy << 2);
 
 	int lane_id = threadIdx.x & 0x1F;
@@ -270,18 +268,91 @@ __global__ void kernel_sgemv_v1a (const int rows,
 	int stride2 = (cols<<1);
 	int stride3 = stride2 + cols;
 
+	//printf("col iter : %d\n", col_iters);
+
+	// each iteration, x4 work
 	for(int i=0; i<col_iters; i++)
 	{
-		int curr_col = gx + i * 32;
+		//int curr_col  = gx + i * 128;
+		int curr_col  = gx + (i<<7);
+		int curr_col1 = curr_col + 32;
+		int curr_col2 = curr_col + 64;
+		int curr_col3 = curr_col + 96;
+
+		float b;
+		float b1;
+		float b2;
+		float b3;
+
+		int addr;
+		int addr1;
+		int addr2;
+		int addr3;
+
+		// prefetch 1
+		if (curr_col1 < cols) 
+		{
+			b1    = B[curr_col1];
+			addr1 = row_idx + curr_col1;
+		}
+
+
+
+		// work 
 		if (curr_col < cols) 
 		{
-			float b = B[curr_col];
-			int addr = row_idx + curr_col;
-			tmp   += A[addr]           * b;
-			tmp1  += A[addr + stride1] * b;
-			tmp2  += A[addr + stride2] * b;
-			tmp3  += A[addr + stride3] * b;
+			b = B[curr_col];
+			addr = row_idx + curr_col;
+			tmp   += A[addr]              * b;
+			tmp1  += A[addr + stride1]    * b;
+			tmp2  += A[addr + stride2]    * b;
+			tmp3  += A[addr + stride3]    * b;
 		}
+
+		// prefetch 2
+		if (curr_col2 < cols) 
+		{
+			b2    = B[curr_col2];
+			addr2 = row_idx + curr_col2;
+		}
+
+		// work 1
+		if (curr_col1 < cols) 
+		{
+			tmp   += A[addr1]              * b1;
+			tmp1  += A[addr1 + stride1]    * b1;
+			tmp2  += A[addr1 + stride2]    * b1;
+			tmp3  += A[addr1 + stride3]    * b1;
+		}
+
+		// prefetch 3
+		if (curr_col3 < cols) 
+		{
+			b3    = B[curr_col3];
+			addr3 = row_idx + curr_col3;
+		}
+
+		// work 2
+		if (curr_col2 < cols) 
+		{
+			tmp   += A[addr2]              * b2;
+			tmp1  += A[addr2 + stride1]    * b2;
+			tmp2  += A[addr2 + stride2]    * b2;
+			tmp3  += A[addr2 + stride3]    * b2;
+		}
+
+		// work 3
+		if (curr_col3 < cols) 
+		{
+			tmp   += A[addr3]              * b3;
+			tmp1  += A[addr3 + stride1]    * b3;
+			tmp2  += A[addr3 + stride2]    * b3;
+			tmp3  += A[addr3 + stride3]    * b3;
+		}
+
+
+
+		//printf("tmp %f, tmp1 %f\n", tmp, tmp1);
 	}
 
 	// warp reduction on tmp	
@@ -308,7 +379,7 @@ __global__ void kernel_sgemv_v1a (const int rows,
 	tmp  += __shfl_down(tmp,   1, 32);                                      
 	tmp1 += __shfl_down(tmp1,  1, 32);                                      
 	tmp2 += __shfl_down(tmp2,  1, 32);                                      
-	tmp3 += __shfl_down(tmp3,  1, 32);                                      
+	tmp3 += __shfl_down(tmp3,  1, 32);    
 
 	if(lane_id == 0) {
 		C[gy]      = tmp;
@@ -353,13 +424,14 @@ void test_v1a(int rows, int cols)
 	// kernel
 	//--------------------------------------------------------------------------
 
-	// each thread on the row, do twice work load
+	// each thread on the row, do 4x work load
     dim3 Blk_config = dim3(32, 4, 1);                                           
     dim3 Grd_config = dim3(1, BLK(rows/4, 4), 1);
 
 	kernel_sgemv_v1a <<< Grd_config, Blk_config>>>(rows, 
 			cols, 
-			BLK(cols,32),
+			//BLK(cols,32),
+			BLK(cols,128),
 			d_A,
 			d_B,
 			d_C);
@@ -405,8 +477,12 @@ int main(int argc, char **argv) {
 	//test_v1a(50,   50);
 
 	// warm-up
-	test_v1a(200,   100);
-	test_v1a(200,   100);
+	test_v1a(8,   128);
+	test_v1a(8,   128);
+
+	//test_v1a(1000,   1000);
+	//test_v1a(1000,  1000);
+
 	//test_v1a(1000,   50);
 	//test_v1a(100,   100);
 

@@ -101,79 +101,6 @@ inline int BLK(int number, int blksize)
 //----------------------------------------------------------------------------//
 // 
 //----------------------------------------------------------------------------//
-/*
-__global__ void kernel_sgemv_v1a (const int rows,
-		const int cols,
-		const int col_iters,
-		const int stride,
-		const float* __restrict__ A,
-		const float* __restrict__ B,
-		float* __restrict__ C)
-{
-	int gx  = threadIdx.x;
-	int gy  = threadIdx.y + __mul24(blockIdx.y, blockDim.y); // rows
-	int gy1 = gy + stride; 
-
-	int lane_id = threadIdx.x & 0x1F;
-
-	__shared__ float bs[1024];
-
-	// use gy to load B to shared memory 
-	if(lane_id == 0 && gy < cols) {
-		bs[gy] = B[gy];	
-	}
-
-	__syncthreads();
-	
-
-//	if (lane_id == 0) {
-//		printf("gridDim.y : %d, blockDim.y : %d\n", gridDim.y, blockDim.y);
-//	}
-
-	int row_idx, row_idx1;
-	float tmp, tmp1;
-
-	row_idx  = gy * cols;
-	row_idx1 = gy1 * cols;
-
-	tmp = 0.f;
-	tmp1 = 0.f;
-	for(int i=0; i<col_iters; i++)
-	{
-		int curr_col = gx + i * 32;
-		if (curr_col < cols) {
-			//tmp  += A[row_idx + curr_col] * B[curr_col];
-			//tmp1 += A[row_idx1 + curr_col] * B[curr_col];
-			tmp  += A[row_idx + curr_col] * bs[curr_col];
-			tmp1 += A[row_idx1 + curr_col] * bs[curr_col];
-		}
-	}
-
-	// warp reduction on tmp	
-	tmp += __shfl_down(tmp, 16, 32);                                      
-	tmp += __shfl_down(tmp,  8, 32);                                      
-	tmp += __shfl_down(tmp,  4, 32);                                      
-	tmp += __shfl_down(tmp,  2, 32);                                      
-	tmp += __shfl_down(tmp,  1, 32);                                      
-
-	if(lane_id == 0) {
-		C[gy]  = tmp;
-	}
-
-	// warp reduction on tmp	
-	tmp1 += __shfl_down(tmp1, 16, 32);                                      
-	tmp1 += __shfl_down(tmp1,  8, 32);                                      
-	tmp1 += __shfl_down(tmp1,  4, 32);                                      
-	tmp1 += __shfl_down(tmp1,  2, 32);                                      
-	tmp1 += __shfl_down(tmp1,  1, 32);                                      
-
-	if(lane_id == 0) {
-		C[gy1] = tmp1;
-	}
-}
-*/
-
-/*
 __global__ void kernel_sgemv_v1a (const int rows,
 		const int cols,
 		const int col_iters,
@@ -181,144 +108,113 @@ __global__ void kernel_sgemv_v1a (const int rows,
 		const float* __restrict__ B,
 		float* __restrict__ C)
 {
-	//int gx  = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	int gx  = threadIdx.x;
 	int gy  = threadIdx.y + __mul24(blockIdx.y, blockDim.y); // rows
 
 	// 2x work
-	gy = gy + gy;
-
+	gy = (gy << 1);
 	int lane_id = threadIdx.x & 0x1F;
-
-	// use ly to load B to shared memory 
-	if(threadIdx.y == 0) 
-	{
-		for(int i=0; i<col_iters; i++)
-		{
-			int curr_col = gx + i * 32;
-			if (curr_col < cols) {
-				bs[curr_col] = B[curr_col];	
-			}
-		}
-		//printf("%f\n", bs[gy]);
-	}
-	__syncthreads();
-
-
-	int row_idx; 
-	//int row_idx1;
-	float tmp; 
-	//float tmp1;
-
-	row_idx  = gy * cols;
-	//row_idx1 = gy1 * cols;
-
-	tmp = 0.f;
-	//tmp1 = 0.f;
-	for(int i=0; i<col_iters; i++)
-	{
-		int curr_col = gx + i * 32;
-		if (curr_col < cols) {
-			//tmp  += A[row_idx + curr_col] * B[curr_col];
-			//tmp1 += A[row_idx1 + curr_col] * B[curr_col];
-			tmp  += A[row_idx + curr_col] * bs[curr_col];
-			//printf("%f\n", bs[curr_col]);
-			//tmp1 += A[row_idx1 + curr_col] * bs[curr_col];
-		}
-	}
-
-	// warp reduction on tmp	
-	tmp += __shfl_down(tmp, 16, 32);                                      
-	tmp += __shfl_down(tmp,  8, 32);                                      
-	tmp += __shfl_down(tmp,  4, 32);                                      
-	tmp += __shfl_down(tmp,  2, 32);                                      
-	tmp += __shfl_down(tmp,  1, 32);                                      
-
-	if(lane_id == 0) {
-		C[gy]  = tmp;
-	}
-}
-*/
-
-__global__ void kernel_sgemv_v1a (const int rows,
-		const int cols,
-		const int col_iters,
-		const float* __restrict__ A,
-		const float* __restrict__ B,
-		float* __restrict__ C)
-{
-	//int gx  = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
-	int gx  = threadIdx.x;
-	int gy  = threadIdx.y + __mul24(blockIdx.y, blockDim.y); // rows
-
-	// 2x work
-	//gy = gy + gy;
-
-	// 4x
-	gy = (gy << 2);
-
-	int lane_id = threadIdx.x & 0x1F;
-
 	int row_idx  = gy * cols;
 
 	float tmp = 0.f;
 	float tmp1 = 0.f;
-	float tmp2 = 0.f;
-	float tmp3 = 0.f;
 
-	int stride1 = cols;
-	int stride2 = (cols<<1);
-	int stride3 = stride2 + cols;
-
+	// each iteration, x4 work
 	for(int i=0; i<col_iters; i++)
 	{
-		int curr_col = gx + i * 32;
+		//int curr_col  = gx + i * 128;
+		int curr_col  = gx + (i<<7);
+		int curr_col1 = curr_col + 32;
+		int curr_col2 = curr_col + 64;
+		int curr_col3 = curr_col + 96;
+
+		float b;
+		float b1;
+		float b2;
+		float b3;
+
+		int addr;
+		int addr1;
+		int addr2;
+		int addr3;
+
+		// work 
 		if (curr_col < cols) 
 		{
-			float b = B[curr_col];
-			int addr = row_idx + curr_col;
+			b = B[curr_col];
+			//printf("b : %f\n", b);
+			addr = row_idx + curr_col;
 			tmp   += A[addr]           * b;
-			tmp1  += A[addr + stride1] * b;
-			tmp2  += A[addr + stride2] * b;
-			tmp3  += A[addr + stride3] * b;
+			tmp1  += A[addr + cols]    * b;
 		}
+
+		// prefetch 2
+		if (curr_col2 < cols) 
+		{
+			b2    = B[curr_col2];
+			addr2 = row_idx + curr_col2;
+		}
+
+		// work 1
+		if (curr_col1 < cols) 
+		{
+			b1 = B[curr_col1];
+			addr1 = row_idx + curr_col1;
+			tmp   += A[addr1]           * b1;
+			tmp1  += A[addr1 + cols]    * b1;
+		}
+
+		// prefetch 3
+		if (curr_col3 < cols) 
+		{
+			b3    = B[curr_col3];
+			addr3 = row_idx + curr_col3;
+		}
+
+		// work 2
+		if (curr_col2 < cols) 
+		{
+			tmp   += A[addr2]           * b2;
+			tmp1  += A[addr2 + cols]    * b2;
+		}
+
+		// work 3
+		if (curr_col3 < cols) 
+		{
+			tmp   += A[addr3]           * b3;
+			tmp1  += A[addr3 + cols]    * b3;
+		}
+
+
+
+		//printf("tmp %f, tmp1 %f\n", tmp, tmp1);
 	}
 
 	// warp reduction on tmp	
 	tmp  += __shfl_down(tmp,  16, 32);                                      
 	tmp1 += __shfl_down(tmp1, 16, 32);                                      
-	tmp2 += __shfl_down(tmp2, 16, 32);                                      
-	tmp3 += __shfl_down(tmp3, 16, 32);                                      
 
-	tmp  += __shfl_down(tmp,  8, 32);                                      
+	tmp  += __shfl_down(tmp,   8, 32);                                      
 	tmp1 += __shfl_down(tmp1,  8, 32);                                      
-	tmp2 += __shfl_down(tmp2,  8, 32);                                      
-	tmp3 += __shfl_down(tmp3,  8, 32);                                      
 
-	tmp  += __shfl_down(tmp,  4, 32);                                      
+	tmp  += __shfl_down(tmp,   4, 32);                                      
 	tmp1 += __shfl_down(tmp1,  4, 32);                                      
-	tmp2 += __shfl_down(tmp2,  4, 32);                                      
-	tmp3 += __shfl_down(tmp3,  4, 32);                                      
 
 	tmp  += __shfl_down(tmp,   2, 32);                                      
 	tmp1 += __shfl_down(tmp1,  2, 32);                                      
-	tmp2 += __shfl_down(tmp2,  2, 32);                                      
-	tmp3 += __shfl_down(tmp3,  2, 32);                                      
 
 	tmp  += __shfl_down(tmp,   1, 32);                                      
 	tmp1 += __shfl_down(tmp1,  1, 32);                                      
-	tmp2 += __shfl_down(tmp2,  1, 32);                                      
-	tmp3 += __shfl_down(tmp3,  1, 32);                                      
 
 	if(lane_id == 0) {
 		C[gy]      = tmp;
 		C[gy + 1]  = tmp1;
-		C[gy + 2]  = tmp2;
-		C[gy + 3]  = tmp3;
 	}
+
 }
 
-void test_v1a(int rows, int cols)
+
+template <int CHK> void test_v1a(int rows, int cols)
 {
 	cudaEvent_t startEvent, stopEvent;
 	checkCudaErrors( cudaEventCreate(&startEvent) );
@@ -352,14 +248,14 @@ void test_v1a(int rows, int cols)
 	//--------------------------------------------------------------------------
 	// kernel
 	//--------------------------------------------------------------------------
-
-	// each thread on the row, do twice work load
     dim3 Blk_config = dim3(32, 4, 1);                                           
-    dim3 Grd_config = dim3(1, BLK(rows/4, 4), 1);
+    dim3 Grd_config = dim3(1, BLK(rows/2, 4), 1);
 
 	kernel_sgemv_v1a <<< Grd_config, Blk_config>>>(rows, 
 			cols, 
-			BLK(cols,32),
+			//BLK(cols,32),
+			//BLK(cols,64),
+			BLK(cols, 128),
 			d_A,
 			d_B,
 			d_C);
@@ -367,14 +263,20 @@ void test_v1a(int rows, int cols)
 	cudaEventRecord(stopEvent);
 	cudaEventSynchronize(stopEvent); 
 
-	float milliseconds = 0;
-	cudaEventElapsedTime(&milliseconds, startEvent, stopEvent);
-	cout << milliseconds << " (ms)" << endl;
+	if(CHK)
+	{
+		float milliseconds = 0;
+		cudaEventElapsedTime(&milliseconds, startEvent, stopEvent);
+		//cout << milliseconds << " (ms)" << endl;
+		printf("%f (ms)\n", milliseconds);
+	}
 
+	/*
 	//d2h_print1d(d_C, C, rows);
 	if (check(d_C, C, rows, cols))	{
 		printf("success!\n");
 	}
+	*/
 
 
 	// release
@@ -389,10 +291,13 @@ void test_v1a(int rows, int cols)
 
 int main(int argc, char **argv) {
 
-	cudaDeviceProp prop;
-	checkCudaErrors( cudaGetDeviceProperties(&prop, 0) );
-	printf("Device: %s\n", prop.name);
+	//cudaDeviceProp prop;
+	//checkCudaErrors( cudaGetDeviceProperties(&prop, 0) );
+	//printf("Device: %s\n", prop.name);
 
+	int rows = atoi(argv[1]);                                                   
+	int cols = atoi(argv[2]);                                                   
+	//printf("rows %d, cols %d\n", rows, cols);
 
 	// 10K
 	//test(100,   100);
@@ -404,9 +309,15 @@ int main(int argc, char **argv) {
 	// lanch a 2d grid, where x is on column with fixed warp size 32
 	//test_v1a(50,   50);
 
-	// warm-up
-	test_v1a(200,   100);
-	test_v1a(200,   100);
+	// warm-up                                                                  
+	for(int i=0; i<10; i++)                                                     
+		test_v1a<0>(rows,   cols);                                                  
+
+	test_v1a<1>(rows,   cols); 
+
+
+
+	///test_v1a(100,   50);
 	//test_v1a(1000,   50);
 	//test_v1a(100,   100);
 
