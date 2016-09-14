@@ -185,7 +185,8 @@ void test(int rows, int cols)
 
 	float milliseconds = 0;
 	cudaEventElapsedTime(&milliseconds, startEvent, stopEvent);
-	cout << milliseconds / 1000.f << endl;
+	//cout << milliseconds / 1000.f << endl;
+	printf("%12.8f (ms)\n", milliseconds);
 
 	//runtime = wtime() - timing;
 	//cout << runtime << endl;

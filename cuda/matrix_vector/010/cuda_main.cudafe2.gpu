@@ -1,0 +1,94 @@
+# 212 "/usr/lib/gcc/x86_64-linux-gnu/4.8/include/stddef.h" 3
+typedef unsigned long size_t;
+#include "crt/device_runtime.h"
+#if !defined(__CUDABE__)
+# 160 "/usr/local/cuda/include/device_functions.h"
+ __device_builtin__ ___device__(extern  __no_sc__) void __syncthreads(void);
+#endif
+#if !defined(__CUDABE__)
+# 335 "/usr/local/cuda/include/device_functions.h"
+ __device_builtin__ ___device__(extern  __no_sc__) int __mul24(int, int);
+#endif
+# 105 "cuda_main.cu"
+__global__ __var_used__ extern void _Z17kernel_sgemv_128biiiPKfS0_Pf(const int, const int, const int, const float *__restrict__, const float *__restrict__, float *__restrict__);
+#include "common_functions.h"
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+# 105 "cuda_main.cu"
+__global__ __var_used__ void _Z17kernel_sgemv_128biiiPKfS0_Pf(
+# 105 "cuda_main.cu"
+const int rows, 
+# 106 "cuda_main.cu"
+const int cols, 
+# 107 "cuda_main.cu"
+const int iters, 
+# 108 "cuda_main.cu"
+const float *__restrict__ A, 
+# 109 "cuda_main.cu"
+const float *__restrict__ B, 
+# 110 "cuda_main.cu"
+float *__restrict__ C){
+# 110 "cuda_main.cu"
+{
+# 111 "cuda_main.cu"
+{
+# 113 "cuda_main.cu"
+static  __shared__  __var_used__ float __cuda_local_var_75868_32_non_const_sb[128];
+# 115 "cuda_main.cu"
+ int __cuda_local_var_75870_6_non_const_gx;
+# 127 "cuda_main.cu"
+ int __cuda_local_var_75882_6_non_const_idx;
+# 130 "cuda_main.cu"
+ float __cuda_local_var_75885_8_non_const_tmp;
+# 115 "cuda_main.cu"
+__cuda_local_var_75870_6_non_const_gx = ((int)((threadIdx.x) + ((unsigned)(__mul24(((int)(blockIdx.x)), ((int)(blockDim.x)))))));
+# 122 "cuda_main.cu"
+((__cuda_local_var_75868_32_non_const_sb)[(threadIdx.x)]) = (B[(threadIdx.x)]);
+# 123 "cuda_main.cu"
+__syncthreads();
+# 127 "cuda_main.cu"
+__cuda_local_var_75882_6_non_const_idx = (__cuda_local_var_75870_6_non_const_gx * cols);
+# 130 "cuda_main.cu"
+__cuda_local_var_75885_8_non_const_tmp = (0.0F);
+# 130 "cuda_main.cu"
+{
+# 137 "cuda_main.cu"
+ int i;
+# 137 "cuda_main.cu"
+i = 0;
+# 139 "cuda_main.cu"
+
+#pragma unroll
+for (; (i < cols); i += 4)
+# 141 "cuda_main.cu"
+{
+# 142 "cuda_main.cu"
+ int __cuda_local_var_75897_7_non_const_curr_addr;
+# 142 "cuda_main.cu"
+__cuda_local_var_75897_7_non_const_curr_addr = (__cuda_local_var_75882_6_non_const_idx + i);
+# 153 "cuda_main.cu"
+__cuda_local_var_75885_8_non_const_tmp += ((A[__cuda_local_var_75897_7_non_const_curr_addr]) * ((__cuda_local_var_75868_32_non_const_sb)[i]));
+# 154 "cuda_main.cu"
+__cuda_local_var_75885_8_non_const_tmp += ((A[(__cuda_local_var_75897_7_non_const_curr_addr + 1)]) * ((__cuda_local_var_75868_32_non_const_sb)[(i + 1)]));
+# 155 "cuda_main.cu"
+__cuda_local_var_75885_8_non_const_tmp += ((A[(__cuda_local_var_75897_7_non_const_curr_addr + 2)]) * ((__cuda_local_var_75868_32_non_const_sb)[(i + 2)]));
+# 156 "cuda_main.cu"
+__cuda_local_var_75885_8_non_const_tmp += ((A[(__cuda_local_var_75897_7_non_const_curr_addr + 3)]) * ((__cuda_local_var_75868_32_non_const_sb)[(i + 3)]));
+# 170 "cuda_main.cu"
+}
+# 170 "cuda_main.cu"
+}
+# 264 "cuda_main.cu"
+if (__cuda_local_var_75870_6_non_const_gx < rows)
+# 264 "cuda_main.cu"
+{
+# 265 "cuda_main.cu"
+(C[__cuda_local_var_75870_6_non_const_gx]) = __cuda_local_var_75885_8_non_const_tmp;
+# 266 "cuda_main.cu"
+}
+# 272 "cuda_main.cu"
+} 
+# 272 "cuda_main.cu"
+}}
