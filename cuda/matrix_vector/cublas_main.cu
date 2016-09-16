@@ -207,9 +207,34 @@ void test(int rows, int cols)
 
 int main(int argc, char **argv) {
 
+	int rows = atoi(argv[1]);
+	int cols = atoi(argv[2]);
+	//printf("rows %d, cols %d\n", rows, cols);
+
+	// 10K
+	//test(5,   6);
+	// warm-up
+	for(int i=0; i<10; i++)
+		test(rows,   cols);
+
+	test(rows,   cols);
+
+	/*
 	// 10K
 	//test(5,   6);
 	test(100,   100);
+	test(100,   200);
+	test(100,   300);
+	test(100,   400);
+	test(100,   500);
+	test(100,   600);
+	test(100,   700);
+	test(100,   800);
+	test(100,   900);
+	test(100,   1000);
+	test(100,   2000);
+	*/
+
 	//test(200,   100);
 	//test(300,   100);
 	//test(400,   100);
