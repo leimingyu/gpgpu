@@ -11,7 +11,6 @@
 #include <cuda_runtime.h>                                                       
 #include <helper_cuda.h> 
 #include <helper_functions.h>   
-#include <helper_math.h>   
 
 #define FLT_SIZE sizeof(float)
 
@@ -71,8 +70,9 @@ int check(float *d_data, float *h_data, const int rows, const int cols)
 
 	int correct = 1;
 	for(int i=0; i<rows; i++) {
-		if(h_data[i] != cpu) {
-			fprintf(stderr, "result doesn't match! pos : %d, gpu %f , cpu %f\n", 
+		//if(h_data[i] != cpu) {
+		if(fabs(h_data[i] - cpu) > 1e-5) {
+			fprintf(stderr, "result doesn't match! pos : %d, gpu %12.8f , cpu %12.8f\n", 
 					i, h_data[i], cpu);
 			correct = 0;
 			break;
@@ -81,7 +81,7 @@ int check(float *d_data, float *h_data, const int rows, const int cols)
 	return correct;
 }
 
-void h2d_copy(float *h_data, float *d_data, int len)
+void h2d_copy(float *h_data, float *d_data, const int len)
 {
 	cudaMemcpy(d_data, h_data, sizeof(float) * len, cudaMemcpyHostToDevice);
 }
@@ -100,72 +100,112 @@ inline int BLK(int number, int blksize)
 //__constant__ float const_mem[16000];
 
 //----------------------------------------------------------------------------//
-// 1d 1col 
+//  2x work per block
+// 	add row_iters 
 //----------------------------------------------------------------------------//
 __global__ void kernel_sgemv_1d128b (const int rows,
 		const int cols,
-		const int iters,
+		const int col_iters,
+		const int offset,
 		const float* __restrict__ A,
 		const float* __restrict__ B,
 		float* __restrict__ C)
 {
 	// 128 = 4 warps
-	__shared__ float sb[4];
+	__shared__ float B_sm[128];
 
-	int gx = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
+	__shared__ float A_sm[128];
+
+	int gx = threadIdx.x + __mul24(blockIdx.x, blockDim.x); // rows
 	int lx = threadIdx.x;
-	int bx = blockIdx.x;	// 1 block for 1 row
-	int startpos = bx * cols;
 
-	// lx % 32
-	int lane_id = threadIdx.x & 0x1F;
+	int pos  = gx * cols; 	// row start address
 
-	// lx / 32
-	int warp_id = threadIdx.x >> 5;
+
+	for(int i=0; i<cols; i+=4)
+	{
+		// i * 128
+		int addr = i<<7 + lx; 
+		A_sum[addr]       = A[pos+i];
+		A_sum[addr + 128] = A[pos+i + 1];
+		A_sum[addr + 256] = A[pos+i + 2];
+		A_sum[addr + 384] = A[pos+i + 3];
 	
-	float c = 0.f;
+	}
 
-	// 1st iters
+	//int lane_id = threadIdx.x & 0x1F;
+	//int warp_id = threadIdx.x >> 5;
+	
+	// assume B len is max 128
+
+
+	B_sm[lx]  = B[lx];
+	A_sm[lx]  = A[startpos  + lx];
+	A1_sm[lx] = A[startpos1 + lx];
+
+	__syncthreads();
+
+	//-----------------------------------------//
+	// 
+	//-----------------------------------------//
+	float c  = 0.f;
+	float c1 = 0.f;
 	if(lx < cols) {
-		c = A[startpos + lx] * B[lx];
+		if(bx < rows) 
+			c  = A_sm[lx]  * B_sm[lx]; 
+		if(bx1 < rows)
+			c1  = A1_sm[lx]  * B_sm[lx]; 
 	}
-
-	// the rest iters
-	for(int i = 1; i<iters; i++) {
-		lx += 128; 
-		if(lx < cols) {
-			c += A[startpos + lx] * B[lx];
-		}
-	}
-
-
 
 	// 128 has 4 warps
 	// each warp do reduction
-	c += __shfl_down(c, 16, 32);                                      
+	c  += __shfl_down(c, 16, 32);                                      
+	c1 += __shfl_down(c1, 16, 32);                                      
+
 	c += __shfl_down(c,  8, 32);                                      
+	c1 += __shfl_down(c1,  8, 32);                                      
+
 	c += __shfl_down(c,  4, 32);                                      
+	c1 += __shfl_down(c1,  4, 32);                                      
+
 	c += __shfl_down(c,  2, 32);                                      
+	c1 += __shfl_down(c1,  2, 32);                                      
+
 	c += __shfl_down(c,  1, 32);  
+	c1 += __shfl_down(c1,  1, 32);  
 
 
 	// 4 warps  = 4 data points
 	if(lane_id == 0) {
 		sb[warp_id] = c;	
+		sb1[warp_id] = c1;	
 	}
 
 	__syncthreads();
 
 	if(threadIdx.x == 0) {
-		C[bx] = sb[0] + sb[1] + sb[2] + sb[3];	
+		if(bx < rows) {
+			C[bx]  = sb[0] + sb[1] + sb[2] + sb[3];	
+		}
+
+		if(bx1 < rows) {
+			C[bx1] = sb1[0] + sb1[1] + sb1[2] + sb1[3];	
+		}
 	}
 }
 
-template <int CHK> void test_v1a(int rows, int cols)
+
+void test_v1a(int rows, int cols)
 {
+	cudaDeviceProp prop;
+	checkCudaErrors( cudaGetDeviceProperties(&prop, 0) );
+	//int sm_num =  prop.multiProcessorCount;
+	//printf("sm : %d\n", sm_num);
+
 	cudaEvent_t startEvent, stopEvent;
 	checkCudaErrors( cudaEventCreate(&startEvent) );
 	checkCudaErrors( cudaEventCreate(&stopEvent) );
+
 	// host
 	float *A;
 	float *B;
@@ -189,46 +229,54 @@ template <int CHK> void test_v1a(int rows, int cols)
 	// copy data to device
 	h2d_copy(A, d_A, rows * cols);
 	h2d_copy(B, d_B, cols);
-	h2d_copy(C, d_C, cols);
+	//h2d_copy(C, d_C, rows);
+
 	// start gpu timing
 	cudaEventRecord(startEvent);
 	//--------------------------------------------------------------------------
 	// kernel
+	// 	each block for one row of A
 	//--------------------------------------------------------------------------
+
+	// bs 128, max 16 blks per sm
+	// gtx 970 has 13 smx
     dim3 Blk_config = dim3(128, 1, 1);                                           
-    dim3 Grd_config = dim3(rows, 1, 1);
+    //dim3 Grd_config = dim3(rows, 1, 1);
+
+	//int max_rows_per_iter = 16 * sm_num;
+    //dim3 Grd_config = dim3(max_rows_per_iter, 1, 1);	// bs 128, grd 208
+
+	// 2x work per thread/row/block
+	//int iterwork = max_rows_per_iter * 2;
+
+	// not using persistent mode
+	// double the work per block/rows 
+	int batch_work = BLK(rows, 4);
+    dim3 Grd_config = dim3(batch_work, 1, 1);
+	//int offset = batch_work * cols;
 
 	//printf("iters: %d\n", BLK(cols, 4));
 
 	kernel_sgemv_1d128b <<< Grd_config, Blk_config>>>(rows, 
 			cols, 
-			BLK(cols, 128),
+			BLK(cols, 128), // col_iter
+			batch_work,
 			d_A,
 			d_B,
 			d_C);
-
-
-
-
 
 	// end of gpu timing
 	cudaEventRecord(stopEvent);
 	cudaEventSynchronize(stopEvent); 
 
-	if(CHK)
-	{
-		float milliseconds = 0;
-		cudaEventElapsedTime(&milliseconds, startEvent, stopEvent);
-		//cout << milliseconds << " (ms)" << endl;
-		printf("%f (ms)\n", milliseconds);
-	}
+	float milliseconds = 0;
+	cudaEventElapsedTime(&milliseconds, startEvent, stopEvent);
+	cout << milliseconds << " (ms)" << endl;
 
-	/*
 	//d2h_print1d(d_C, C, rows);
 	if (check(d_C, C, rows, cols))	{
 		printf("success!\n");
 	}
-	*/
 
 
 	// release
@@ -239,24 +287,26 @@ template <int CHK> void test_v1a(int rows, int cols)
 	if (d_A != NULL)			checkCudaErrors(cudaFree(d_A));
 	if (d_B != NULL) 			checkCudaErrors(cudaFree(d_B));
 	if (d_C != NULL)			checkCudaErrors(cudaFree(d_C));
+
+	cudaDeviceReset();
 }
+
+
 
 int main(int argc, char **argv) {
 
-	//cudaDeviceProp prop;
-	//checkCudaErrors( cudaGetDeviceProperties(&prop, 0) );
-	//printf("Device: %s\n", prop.name);
+	cudaDeviceProp prop;
+	checkCudaErrors( cudaGetDeviceProperties(&prop, 0) );
+	printf("Device: %s\n", prop.name);
 
-	int rows = atoi(argv[1]);                                                   
-	int cols = atoi(argv[2]);                                                   
-	//printf("rows %d, cols %d\n", rows, cols);
+	int rows = atoi(argv[1]);
+	int cols = atoi(argv[2]);
 
-	// warm-up                                                                  
-	for(int i=0; i<10; i++)                                                     
-		test_v1a<0>(rows,   cols);                                                  
+	// 100 x 100
+	for(int i=0; i<10; i++)
+		test_v1a(rows,   cols);
 
-	test_v1a<1>(rows,   cols); 
+	test_v1a(rows,   cols);
 
     return(0);
 }
-

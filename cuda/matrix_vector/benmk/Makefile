@@ -1,7 +1,7 @@
 .KEEP_STATE:
 
 all: cublas_main cuda_v001 cuda_v002 cuda_v003 cuda_v004 cuda_v005 \
-	cuda_v006 cuda_v007 cuda_v008 cuda_v010 cuda_v011
+	cuda_v006 cuda_v007 cuda_v008 cuda_v010 cuda_v011 cuda_v012 cuda_v013
 
 DFLAGS      =
 
@@ -98,6 +98,12 @@ cuda_v010: cuda_v010.cu
 cuda_v011: cuda_v011.cu 
 	$(NVCC) $(CUFLAGS) $(CU_INC) $(CU_LD) $(GENCODE_FLAGS) -o $@ $+ $(CULIBS)
 
+cuda_v012: cuda_v012.cu 
+	$(NVCC) $(CUFLAGS) $(CU_INC) $(CU_LD) $(GENCODE_FLAGS) -o $@ $+ $(CULIBS)
+
+cuda_v013: cuda_v013.cu 
+	$(NVCC) $(CUFLAGS) $(CU_INC) $(CU_LD) $(GENCODE_FLAGS) -o $@ $+ $(CULIBS)
+
 # -------- MAGMA  Version -------------------------------------
 #MAGMA_SRC = magma_main.cu magma_wtime.cu
 #magma: magma_main
@@ -117,4 +123,6 @@ clean:
 		cuda_v007 \
 		cuda_v008 \
 		cuda_v010 \
-		cuda_v011
+		cuda_v011 \
+		cuda_v012 \
+		cuda_v013

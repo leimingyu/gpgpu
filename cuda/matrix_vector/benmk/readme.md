@@ -13,3 +13,5 @@ v006	2d + x4 work on row + x4 work on col (prefeching) not good
 v007	2d + x2 work on row + x4 work on col + prefech A and B
 
 v008	2d + x2 work on row + x4 work on col + prefech A and B + float2
+
+v010    1d + 1 block=1 row

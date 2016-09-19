@@ -102,39 +102,94 @@ inline int BLK(int number, int blksize)
 //----------------------------------------------------------------------------//
 // 
 //----------------------------------------------------------------------------//
-__global__ void kernel_sgemv_128b (const int rows,
+__global__ void kernel_sgemv_1d128b (const int rows,
 		const int cols,
-		const int iters,
+		const int col_iters,
 		const float* __restrict__ A,
 		const float* __restrict__ B,
 		float* __restrict__ C)
 {
-	__shared__ float sdata[128];
+	__shared__ float B_sm[128];
 
+	// 128 block thread = 4 (rows) x 32 (cols)
 	int gx = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
+	int lx = threadIdx.x;
 
-	float tmp  = 0.f;
-	float tmp1 = 0.f;
+	// assume 1 block is responsible for  4 rows	
+	int bx_startrow = (blockIdx.x << 2);
 
-	int idx = gx * cols;
+	int lane_id = threadIdx.x & 0x1F;
 
-	// tile size  = 128
-	for(int i=0; i<iters; i++)
+	int warp_id = threadIdx.x >> 5;			// each warp  = one row
+
+	// bx + warp0  = row 1 
+	// bx + warp1  = row 2 
+	// bx + warp2  = row 3 
+	// bx + warp3  = row 4 
+	int row_id = bx_startrow + warp_id;
+	int row_idx = row_id * cols;
+
+	float tmp = 0.f;
+
+	int loc_c  = lane_id; 
+	int loc_c1 = lane_id + 32;
+	int loc_c2 = lane_id + 64;
+	int loc_c3 = lane_id + 96;
+
+	// each iteration  = 128 cols
+	for (int i=0; i<col_iters; i++)
 	{
-		int bid = threadIdx.x + i * 128;
+		//int offset = i * 128;
+		int col_offset = (i<<7);
 
-		// load B to shared memory
-		sdata[threadIdx.x] = (bid < cols)? B[bid] : 0.f;
+		// all the 128 threads of current block load 128 data points from B to B_sm
+		int col_iter = lx + i * 128; 
+		if(col_iter < cols)
+			B_sm[lx] = B[col_iter];
 		__syncthreads();
 
-		if(bid < cols) {
-			tmp  += A[idx + bid] * sdata[threadIdx.x];
-			tmp1 += A[idx + bid + cols] * sdata[threadIdx.x];
+
+		int col_idx  = loc_c  + col_offset;
+		int col_idx1 = loc_c1 + col_offset; 
+		int col_idx2 = loc_c2 + col_offset; 
+		int col_idx3 = loc_c3 + col_offset; 
+
+
+		if(row_id < rows)
+		{
+			// work on 1st 32 threads/cols
+			if(col_idx < cols) {
+				tmp += A[row_idx + col_idx] * B_sm[loc_c];
+			}
+
+			// work on 2nd 32 threads/cols
+			if(col_idx1 < cols) {
+				tmp += A[row_idx + col_idx1] * B_sm[loc_c1];
+			}
+
+			// work on 3rd 32 threads/cols
+			if(col_idx2 < cols) {
+				tmp += A[row_idx + col_idx2] * B_sm[loc_c2];
+			}
+
+			// work on 4th 32 threads/cols
+			if(col_idx3 < cols) {
+				tmp += A[row_idx + col_idx3] * B_sm[loc_c3];
+			}
 		}
 	}
 
-	C[gx]     = tmp;
-	C[gx + 1] = tmp1;
+	// warp reduction
+	tmp  += __shfl_down(tmp,  16, 32);                                      
+	tmp  += __shfl_down(tmp,   8, 32);                                      
+	tmp  += __shfl_down(tmp,   4, 32);                                      
+	tmp  += __shfl_down(tmp,   2, 32);                                      
+	tmp  += __shfl_down(tmp,   1, 32);                                      
+
+	// each warp output 1 row data 
+	if(lane_id == 0) {
+		C[row_id] = tmp;	
+	}
 
 }
 
@@ -170,21 +225,21 @@ template <int CHK> void test_v1a(int rows, int cols)
 	h2d_copy(C, d_C, cols);
 	// start gpu timing
 	cudaEventRecord(startEvent);
-	//--------------------------------------------------------------------------
-	// kernel
-	//--------------------------------------------------------------------------
 
-	dim3 Blk_config = dim3(128, 1, 1);                                           
-	dim3 Grd_config = dim3(BLK(rows,256), 1, 1);
+	//--------------------------------------------------------------------------
+	// kernel	: 4 x 32 per thread block
+	//--------------------------------------------------------------------------
+    dim3 Blk_config = dim3(128, 1, 1);                                           
+	// compute how many rows to launch
+	int batch_work = BLK(rows,4);
+    dim3 Grd_config = dim3(batch_work, 1, 1);
 
-	kernel_sgemv_128b <<< Grd_config, Blk_config>>>(rows, 
+	kernel_sgemv_1d128b <<< Grd_config, Blk_config>>>(rows, 
 			cols, 
-			BLK(cols, 128),
+			BLK(cols, 128), // col_iter
 			d_A,
 			d_B,
 			d_C);
-
-
 
 
 

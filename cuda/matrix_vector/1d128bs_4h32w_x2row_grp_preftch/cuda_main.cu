@@ -99,6 +99,7 @@ inline int BLK(int number, int blksize)
 //----------------------------------------------------------------------------//
 // description
 // 	each block work on 4 rows
+//  double the work on the row :  each warp  works for 2 rows
 //----------------------------------------------------------------------------//
 __global__ void kernel_sgemv_1d128b (const int rows,
 		const int cols,
@@ -113,21 +114,24 @@ __global__ void kernel_sgemv_1d128b (const int rows,
 	int gx = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	int lx = threadIdx.x;
 
-	// assume 1 block is responsible for  4 rows	
-	int bx_startrow = (blockIdx.x << 2);
+	// assume 1 block is responsible for  8 rows	
+	int bx_startrow = (blockIdx.x << 3);
 
 	int lane_id = threadIdx.x & 0x1F;
-
 	int warp_id = threadIdx.x >> 5;			// each warp  = one row
 
-	// bx + warp0  = row 1 
-	// bx + warp1  = row 2 
-	// bx + warp2  = row 3 
-	// bx + warp3  = row 4 
+	// warp 0 = row 0 4 
+	// warp 1 = row 1 5 
+	// warp 2 = row 2 6 
+	// warp 3 = row 3 7 
 	int row_id = bx_startrow + warp_id;
-	int row_idx = row_id * cols;
+	int row_id1 = row_id + 4; 
 
-	float tmp = 0.f;
+	int row_idx  = row_id * cols;
+	int row_idx1 = row_idx + (cols<<2); 
+
+	float tmp  = 0.f;
+	float tmp1 = 0.f;
 
 
 	//printf("col_iters = %d \n", col_iters);
@@ -155,41 +159,105 @@ __global__ void kernel_sgemv_1d128b (const int rows,
 		int col_idx2 = loc_c2 + col_offset; 
 		int col_idx3 = loc_c3 + col_offset; 
 
+		// pre load B from shared memory to reg
+		float loc_B  = (col_idx  < cols) ?  B_sm[loc_c] : 0.f;
+		float loc_B1 = (col_idx1 < cols) ?  B_sm[loc_c1] : 0.f;
+		float loc_B2 = (col_idx2 < cols) ?  B_sm[loc_c2] : 0.f;
+		float loc_B3 = (col_idx3 < cols) ?  B_sm[loc_c3] : 0.f;
+
+		// if col is out of col range, it is multiplied by 0 which add 0 to tmp
+		// this way, the inner if is removed
+
+		//--------------------//
+		// with prefetch next 32 cols
+		//--------------------//
 
 		if(row_id < rows)
 		{
-			// work on 1st 32 threads/cols
-			if(col_idx < cols) {
-				tmp += A[row_idx + col_idx] * B_sm[loc_c];
-			}
+			// prefetch 1
+			float preA1 = A[row_idx +  col_idx1];
 
-			// work on 2nd 32 threads/cols
-			if(col_idx1 < cols) {
-				tmp += A[row_idx + col_idx1] * B_sm[loc_c1];
-			}
+			// work
+			tmp  += A[row_idx  + col_idx]  * loc_B; 
 
-			// work on 3rd 32 threads/cols
-			if(col_idx2 < cols) {
-				tmp += A[row_idx + col_idx2] * B_sm[loc_c2];
-			}
+			// prefetch 2
+			float preA2 = A[row_idx +  col_idx2];
 
-			// work on 4th 32 threads/cols
-			if(col_idx3 < cols) {
-				tmp += A[row_idx + col_idx3] * B_sm[loc_c3];
-			}
+			// work 1
+			//tmp  += A[row_idx +  col_idx1] * loc_B1; 
+			tmp  += preA1 * loc_B1; 
+
+			// prefetch 3
+			preA1 = A[row_idx +  col_idx3];
+
+			// work 2
+			//tmp  += A[row_idx +  col_idx2] * loc_B2; 
+			tmp  += preA2 * loc_B2; 
+
+			// work 3
+			//tmp  += A[row_idx +  col_idx3] * loc_B3; 
+			tmp  += preA1 * loc_B3; 
+		}
+
+		/*
+		if(row_id1 < rows)
+		{
+			tmp1  += A[row_idx1 + col_idx]  * loc_B; 
+			tmp1  += A[row_idx1 + col_idx1] * loc_B1;
+			tmp1  += A[row_idx1 + col_idx2] * loc_B2; 
+			tmp1  += A[row_idx1 + col_idx3] * loc_B3; 
+		}
+		*/
+		if(row_id1 < rows)
+		{
+			// prefetch 1                                                       
+			float preA1 = A[row_idx1 +  col_idx1];
+
+			// work                                                             
+			tmp1  += A[row_idx1 + col_idx]  * loc_B;                            
+
+			// pretech 2                                                        
+			float preA2 = A[row_idx1 +  col_idx2];                              
+
+			// work 2                                                           
+			//tmp1  += A[row_idx1 + col_idx1] * loc_B1;                         
+			tmp1  += preA1 * loc_B1;                                             
+
+			// prefetch 3                                                       
+			preA1 = A[row_idx1 +  col_idx3];                                    
+
+			// work 2                                                           
+			//tmp1  += A[row_idx1 + col_idx2] * loc_B2;                         
+			tmp1  += preA2 * loc_B2;                                            
+
+			// work 3                                                           
+			//tmp1  += A[row_idx1 + col_idx3] * loc_B3;                         
+			tmp1  += preA1 * loc_B3; 
+
+
 		}
 	}
 
 	// warp reduction
 	tmp  += __shfl_down(tmp,  16, 32);                                      
-	tmp  += __shfl_down(tmp,   8, 32);                                      
-	tmp  += __shfl_down(tmp,   4, 32);                                      
-	tmp  += __shfl_down(tmp,   2, 32);                                      
-	tmp  += __shfl_down(tmp,   1, 32);                                      
+	tmp1  += __shfl_down(tmp1,  16, 32);                                      
 
-	// each warp output 1 row data 
+	tmp  += __shfl_down(tmp,   8, 32);                                      
+	tmp1  += __shfl_down(tmp1,   8, 32);                                      
+
+	tmp  += __shfl_down(tmp,   4, 32);                                      
+	tmp1  += __shfl_down(tmp1,   4, 32);                                      
+
+	tmp  += __shfl_down(tmp,   2, 32);                                      
+	tmp1  += __shfl_down(tmp1,   2, 32);                                      
+
+	tmp  += __shfl_down(tmp,   1, 32);                                      
+	tmp1  += __shfl_down(tmp1,   1, 32);                                      
+
+	// each warp output 2 row data 
 	if(lane_id == 0) {
 		C[row_id] = tmp;	
+		C[row_id1] = tmp1;	
 	}
 
 }
@@ -243,7 +311,7 @@ void test_v1a(int rows, int cols)
     dim3 Blk_config = dim3(128, 1, 1);                                           
 
 	// compute how many rows to launch
-	int batch_work = BLK(rows,4);
+	int batch_work = BLK(rows,8);
     dim3 Grd_config = dim3(batch_work, 1, 1);
 
 
