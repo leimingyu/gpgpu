@@ -132,7 +132,7 @@ __device__ static float atomic_max(float* address, float val)
 }
 
 //----------------------------------------------------------------------------//
-// bs 1024 
+// 
 //----------------------------------------------------------------------------//
 template <int blocksize>
 __global__ void kernel_find_max(const float* __restrict__ A,
@@ -289,10 +289,10 @@ template <int CHK> void test_v1(int blocksize, int datasize)
 		printf("%f (ms)\n", milliseconds);
 	}
 
-	// Verify the correctness
-	if (check(d_Amax, Amax, datasize))	{
-		printf("success!\n");
-	}
+	//// Verify the correctness
+	//if (check(d_Amax, Amax, datasize))	{
+	//	printf("success!\n");
+	//}
 
 	// release
 	if (A   	!= NULL)			checkCudaErrors(cudaFreeHost(A));
@@ -314,14 +314,13 @@ int main(int argc, char **argv) {
 	// datasize
 	int datasize = atoi(argv[2]);                                                   
 
-	printf("block size %d, data size %d\n", blocksize, datasize);
+	//printf("block size %d, data size %d\n", blocksize, datasize);
 
 	// warm-up                                                                  
-	//for(int i=0; i<10; i++)                                                     
-	//	test_v1a<0>(rows,   cols);                                                  
+	for(int i=0; i<10; i++)                                                     
+		test_v1<0>(blocksize,   datasize); 
 
-	//test_v1<1>(blocksize,   datasize); 
-	test_v1<0>(blocksize,   datasize); 
+	test_v1<1>(blocksize,   datasize); 
 
     return(0);
 }

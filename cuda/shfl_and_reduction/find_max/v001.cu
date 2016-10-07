@@ -394,19 +394,19 @@ template <int CHK> void test_v1(int blocksize, int datasize)
 	//-------------------------------------------//
 
 	if(blocksize <= 64 ) {
-		printf("use bs64 kernel\n");
+		//printf("use bs64 kernel\n");
 		kernel_find_max_64 <<< Grd_config, Blk_config, sm_size >>>  (d_A, warp_per_blk, datasize, d_Amax);
 	} else if (blocksize <= 128) {
-		printf("use bs128 kernel\n");
+		//printf("use bs128 kernel\n");
 		kernel_find_max_128 <<< Grd_config, Blk_config, sm_size >>>  (d_A, warp_per_blk, datasize, d_Amax);
 	} else if (blocksize <= 256) {
-		printf("use bs256 kernel\n");
+		//printf("use bs256 kernel\n");
 		kernel_find_max_256 <<< Grd_config, Blk_config, sm_size >>>  (d_A, warp_per_blk, datasize, d_Amax);
 	} else if (blocksize <= 512) {
-		printf("use bs512 kernel\n");
+		//printf("use bs512 kernel\n");
 		kernel_find_max_512 <<< Grd_config, Blk_config, sm_size >>>  (d_A, warp_per_blk, datasize, d_Amax);
 	} else if (blocksize <= 1024) {
-		printf("use bs1024 kernel\n");
+		//printf("use bs1024 kernel\n");
 		kernel_find_max_1024 <<< Grd_config, Blk_config, sm_size >>>  (d_A, warp_per_blk, datasize, d_Amax);
 	} else { 
 		fprintf(stderr, "block size is over the 1024 limit!\n");
@@ -422,10 +422,10 @@ template <int CHK> void test_v1(int blocksize, int datasize)
 		printf("%f (ms)\n", milliseconds);
 	}
 
-	// Verify the correctness
-	if (check(d_Amax, Amax, datasize))	{
-		printf("success!\n");
-	}
+	//// Verify the correctness
+	//if (check(d_Amax, Amax, datasize))	{
+	//	printf("success!\n");
+	//}
 
 	// release
 	if (A   	!= NULL)			checkCudaErrors(cudaFreeHost(A));
@@ -447,13 +447,14 @@ int main(int argc, char **argv) {
 	// datasize
 	int datasize = atoi(argv[2]);                                                   
 
-	printf("block size %d, data size %d\n", blocksize, datasize);
+	//printf("block size %d, data size %d\n", blocksize, datasize);
 
 	// warm-up                                                                  
-	//for(int i=0; i<10; i++)                                                     
-	//	test_v1a<0>(rows,   cols);                                                  
+	for(int i=0; i<10; i++)                                                     
+		test_v1<0>(blocksize,   datasize); 
 
-	test_v1<0>(blocksize,   datasize); 
+	test_v1<1>(blocksize,   datasize); 
+
 
     return(0);
 }
