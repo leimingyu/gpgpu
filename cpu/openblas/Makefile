@@ -3,7 +3,7 @@ OPENBLAS_LIB=/opt/openblas/lib/
 
 LIBS ?= -lopenblas -lpthread -lgfortran
 
-all: sgemm sgemv
+all: sgemm sgemv sgemv1
 
 sgemm: sgemm.c
 	g++ -I$(OPENBLAS_INC) -L$(OPENBLAS_LIB) $+ -o $@  $(LIBS)
@@ -11,5 +11,8 @@ sgemm: sgemm.c
 sgemv: sgemv.c
 	g++ -I$(OPENBLAS_INC) -L$(OPENBLAS_LIB) $+ -o $@  $(LIBS)
 
+sgemv1: sgemv1.c
+	g++ -I$(OPENBLAS_INC) -L$(OPENBLAS_LIB) $+ -o $@  $(LIBS)
+
 clean:
-	rm sgemm sgemv
+	rm sgemm sgemv sgemv1

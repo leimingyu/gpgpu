@@ -16,26 +16,17 @@ extern "C" {
 
 int main(int argc, char **argv)
 {
-	int rows = atoi(argv[1]);
-	int cols = atoi(argv[2]);
+	int lda = 3;
+	float A[] = { 1.f, 2.f,
+		3.f, 4.f,
+		5.f, 6.f
+	};
 
-	float *A, *B, *C;
-	A = (float *)malloc(rows * cols * sizeof(float));
-	B = (float *)malloc(cols * sizeof(float));
-	C = (float *)malloc(rows * sizeof(float));
+	float B[] = {1.f, 2.f};
 
-	// init
-	for(int i=0; i<rows; i++) {
-		for(int j=0; j<cols; j++) {
-			//A[i * cols + j] = j;
-			A[i * cols + j] = i;
-		}
-	}
+	float C[] = {0.f, 0.f, 0.f};
 
-	for(int i=0; i<cols; i++) {
-		B[i] = 1.f;
-	}
-
+	// output :   5 , 11 , 17
 
 	float alpha = 1.f;
 	float beta = 0.f;
@@ -49,11 +40,11 @@ int main(int argc, char **argv)
 
 	cblas_sgemv(CblasRowMajor, 
 			CblasNoTrans,
-			rows,
-			cols,
+			3,
+			2,
 			alpha,
 			A,
-			rows,
+			lda,
 			B,
 			1,
 			beta,
@@ -72,15 +63,11 @@ int main(int argc, char **argv)
 
 #if DBG
 	// print
-	for(int i=0; i<rows; i++) {
+	for(int i=0; i<3; i++) {
 		printf("%f ", C[i]);
 	}
 	printf("\n");
 #endif
-
-	free(A);
-	free(B);
-	free(C);
 
 	return 0;
 }
