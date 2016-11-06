@@ -6,6 +6,8 @@
 #include <fcntl.h>
 #include <unistd.h>     /* getopt() */
 
+#include <math.h>
+
 #include <iostream>
 
 #include <cuda_runtime.h>                                                       
@@ -71,7 +73,8 @@ int check(float *d_data, float *h_data, const int rows, const int cols)
 
 	int correct = 1;
 	for(int i=0; i<rows; i++) {
-		if(h_data[i] != cpu) {
+		//if(h_data[i] != cpu) {
+		if(fabs(h_data[i] -cpu) > 1e-4) {
 			fprintf(stderr, "result doesn't match! pos : %d, gpu %f , cpu %f\n", 
 					i, h_data[i], cpu);
 			correct = 0;
@@ -297,7 +300,7 @@ template <int CHK> void test_v1a(int rows, int cols)
 	// kernel
 	//--------------------------------------------------------------------------
     dim3 Blk_config = dim3(32, 4, 1);                                           
-    dim3 Grd_config = dim3(1, BLK(rows/2, 4), 1);
+    dim3 Grd_config = dim3(1, BLK((rows+1)/2, 4), 1);
 
 	kernel_sgemv_v1a <<< Grd_config, Blk_config>>>(rows, 
 			cols, 
@@ -319,12 +322,10 @@ template <int CHK> void test_v1a(int rows, int cols)
 		printf("%f (ms)\n", milliseconds);
 	}
 
-	/*
-	//d2h_print1d(d_C, C, rows);
-	if (check(d_C, C, rows, cols))	{
-		printf("success!\n");
-	}
-	*/
+	////d2h_print1d(d_C, C, rows);
+	//if (check(d_C, C, rows, cols))	{
+	//	printf("success!\n");
+	//}
 
 
 	// release

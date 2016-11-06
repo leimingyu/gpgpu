@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>     /* getopt() */
+#include <math.h>
 
 #include <iostream>
 
@@ -248,25 +249,37 @@ __global__ void kernel_sgemv_v1a (const int rows,
 		const float* __restrict__ B,
 		float* __restrict__ C)
 {
-	//int gx  = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
-	int gx  = threadIdx.x;
-	int gy  = threadIdx.y + __mul24(blockIdx.y, blockDim.y); // rows
-
+	__shared__ float B_sm[128];
+	int lx;
+	int gx = lx  = threadIdx.x;
+	int ly = threadIdx.y;
+	int gy  = ly + __mul24(blockIdx.y, blockDim.y); // rows
 	// 2x work
 	gy = (gy << 1);
-
 	int lane_id = threadIdx.x & 0x1F;
-
 	int row_idx  = gy * cols;
-
 	float tmp = 0.f;
 	float tmp1 = 0.f;
 
 	//printf("col iter : %d\n", col_iters);
 
-	// each iteration, x4 work
+	// each iteration, work on the 128 columns of matrix A
 	for(int i=0; i<col_iters; i++)
 	{
+		// lx + ly * 32
+		int loc_col = lx + (ly << 5);
+		// lx + ly * 32 + i * 128;
+		int cur_col = loc_col + (i << 7);
+
+		//if(cur_col < cols) {
+		//	B_sm[loc_col] = B[cur_col];	
+		//} else {
+		//	B_sm[loc_col] = 0.f; 
+		//}
+		B_sm[loc_col] = (cur_col < cols) ? B[cur_col] : 0.f;
+
+		__syncthreads();
+
 		//int curr_col  = gx + i * 128;
 		int curr_col  = gx + (i<<7);
 		int curr_col1 = curr_col + 32;
@@ -292,7 +305,8 @@ __global__ void kernel_sgemv_v1a (const int rows,
 		// prefetch 1
 		if (curr_col1 < cols) 
 		{
-			b1 = B[curr_col1];
+			//b1 = B[curr_col1];
+			b1 = B_sm[lx + 32]; 
 			addr1 = row_idx + curr_col1;
 
 			preA  = A[addr1];
@@ -302,7 +316,8 @@ __global__ void kernel_sgemv_v1a (const int rows,
 		// work 
 		if (curr_col < cols) 
 		{
-			b = B[curr_col];
+			//b = B[curr_col];
+			b = B[lx];
 			//printf("b : %f\n", b);
 			addr = row_idx + curr_col;
 			tmp   += A[addr]           * b;
@@ -312,7 +327,8 @@ __global__ void kernel_sgemv_v1a (const int rows,
 		// prefetch 2
 		if (curr_col2 < cols) 
 		{
-			b2    = B[curr_col2];
+			//b2    = B[curr_col2];
+			b2    = B[lx + 64];
 			addr2 = row_idx + curr_col2;
 
 			preA2  = A[addr2];
@@ -331,7 +347,8 @@ __global__ void kernel_sgemv_v1a (const int rows,
 		// prefetch 3
 		if (curr_col3 < cols) 
 		{
-			b3    = B[curr_col3];
+			//b3    = B[curr_col3];
+			b3    = B[lx + 96];
 			addr3 = row_idx + curr_col3;
 
 			preA   = A[addr3];
@@ -420,7 +437,7 @@ void test_v1a(int rows, int cols)
 
 	// each thread on the row, do twice work load
     dim3 Blk_config = dim3(32, 4, 1);                                           
-    dim3 Grd_config = dim3(1, BLK(rows, 8), 1);
+    dim3 Grd_config = dim3(1, BLK((rows+1)/2, 4), 1);
 
 	kernel_sgemv_v1a <<< Grd_config, Blk_config>>>(rows, 
 			cols, 
@@ -460,28 +477,19 @@ int main(int argc, char **argv) {
 	printf("Device: %s\n", prop.name);
 
 
-	// 10K
-	//test(100,   100);
-	
 	//------------------------------------------------------------------------//
 	// case study 1
 	//------------------------------------------------------------------------//
 
 	// lanch a 2d grid, where x is on column with fixed warp size 32
-
-	// warm-up
-	//test_v1a(8,   128);
-	//test_v1a(8,   128);
-
-	test_v1a(10,   20);
 	test_v1a(50,   50);
-	test_v1a(100,  500);
+	test_v1a(5,   6);
+	// warm-up
+	test_v1a(8,   128);
+	test_v1a(1000,   1000);
 	test_v1a(400,   100);
 	test_v1a(1000,   50);
-	//test_v1a(400,   100);
-
-	//test_v1a(100,   100);
+	test_v1a(100,   100);
 
     return(0);
 }
-

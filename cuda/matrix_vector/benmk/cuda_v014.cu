@@ -6,7 +6,6 @@
 #include <fcntl.h>
 #include <unistd.h>     /* getopt() */
 
-#include <math.h>
 #include <iostream>
 
 #include <cuda_runtime.h>                                                       
@@ -72,8 +71,7 @@ int check(float *d_data, float *h_data, const int rows, const int cols)
 
 	int correct = 1;
 	for(int i=0; i<rows; i++) {
-		//if(h_data[i] != cpu) {
-		if(fabs(h_data[i] - cpu) > 1e-4) {
+		if(h_data[i] != cpu) {
 			fprintf(stderr, "result doesn't match! pos : %d, gpu %f , cpu %f\n", 
 					i, h_data[i], cpu);
 			correct = 0;
@@ -104,228 +102,89 @@ inline int BLK(int number, int blksize)
 //----------------------------------------------------------------------------//
 // 
 //----------------------------------------------------------------------------//
-__global__ void kernel_sgemv_1d128b (const int rows,
+__global__ void kernel_sgemv_1b128bs (const int rows,
 		const int cols,
 		const int col_iters,
+		const int row_iters,
 		const float* __restrict__ A,
 		const float* __restrict__ B,
 		float* __restrict__ C)
 {
 	__shared__ float B_sm[128];
+	__shared__ float out_sm[128];
 
 	// 128 block thread = 4 (rows) x 32 (cols)
-	int gx = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
+	//int gx = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	int lx = threadIdx.x;
-
-	// assume 1 block is responsible for  8 rows	
-	int bx_startrow = (blockIdx.x << 3);
-
 	int lane_id = threadIdx.x & 0x1F;
 	int warp_id = threadIdx.x >> 5;			// each warp  = one row
 
-	// warp 0 = row 0 4 
-	// warp 1 = row 1 5 
-	// warp 2 = row 2 6 
-	// warp 3 = row 3 7 
-	int row_id = bx_startrow + warp_id;
-	int row_id1 = row_id + 4; 
-
-	int row_idx  = row_id * cols;
-	int row_idx1 = row_idx + (cols<<2); 
-
-	float tmp  = 0.f;
-	float tmp1 = 0.f;
-
-
 	//printf("col_iters = %d \n", col_iters);
-
 	int loc_c  = lane_id; 
 	int loc_c1 = lane_id + 32;
 	int loc_c2 = lane_id + 64;
 	int loc_c3 = lane_id + 96;
 
-	// each iteration  = 128 cols
-	for (int i=0; i<col_iters; i++)
+
+	for(int i=0; i<row_iters; i++)
 	{
-		//int offset = i * 128;
-		int col_offset = (i<<7);
-
-		// all the 128 threads of current block load 128 data points from B to B_sm
-		int col_iter = lx + i * 128; 
-		if(col_iter < cols)
-			B_sm[lx] = B[col_iter];
-		__syncthreads();
-
-
-		int col_idx  = loc_c  + col_offset;
-		int col_idx1 = loc_c1 + col_offset; 
-		int col_idx2 = loc_c2 + col_offset; 
-		int col_idx3 = loc_c3 + col_offset; 
-
-		// pre load B from shared memory to reg
-		float loc_B  = (col_idx  < cols) ?  B_sm[loc_c] : 0.f;
-		float loc_B1 = (col_idx1 < cols) ?  B_sm[loc_c1] : 0.f;
-		float loc_B2 = (col_idx2 < cols) ?  B_sm[loc_c2] : 0.f;
-		float loc_B3 = (col_idx3 < cols) ?  B_sm[loc_c3] : 0.f;
-
-		// if col is out of col range, it is multiplied by 0 which add 0 to tmp
-		// this way, the inner if is removed
-		if(row_id < rows)
+		//int row_offset = i * 4; 
+		int row_offset = (i<<2); 
+		// row_offset + warp i
+		int row_id = row_offset + warp_id;
+		int row_idx = row_id * cols;
+	
+		//--------------------------------------//
+		// each column iteration  = 128 cols
+		//--------------------------------------//
+		float tmp = 0.f;
+		for (int j=0; j<col_iters; j++)
 		{
-			tmp  += A[row_idx  + col_idx]  * loc_B; 
-			tmp  += A[row_idx +  col_idx1] * loc_B1; 
-			tmp  += A[row_idx +  col_idx2] * loc_B2; 
-			tmp  += A[row_idx +  col_idx3] * loc_B3; 
+			//int offset = j * 128;
+			int col_offset = (j<<7);
+			// all the 128 threads of current block load 128 data points from B to B_sm
+			int col_iter = lx + col_offset; 
+			if(col_iter < cols)
+				B_sm[lx] = B[col_iter];
+			__syncthreads();
+
+			int col_idx  = loc_c  + col_offset;
+			int col_idx1 = loc_c1 + col_offset; 
+			int col_idx2 = loc_c2 + col_offset; 
+			int col_idx3 = loc_c3 + col_offset; 
+
+			if(row_id < rows)
+			{
+				// work on 1st 32 threads/cols
+				// work on 2nd 32 threads/cols
+				// work on 3rd 32 threads/cols
+				// work on 4th 32 threads/cols
+				if(col_idx  < cols) tmp += A[row_idx + col_idx]  * B_sm[loc_c];
+				if(col_idx1 < cols) tmp += A[row_idx + col_idx1] * B_sm[loc_c1];
+				if(col_idx2 < cols) tmp += A[row_idx + col_idx2] * B_sm[loc_c2];
+				if(col_idx3 < cols) tmp += A[row_idx + col_idx3] * B_sm[loc_c3];
+			}
+
+		} // end column iteration
+
+		// warp reduction
+		tmp  += __shfl_down(tmp,  16, 32);                                      
+		tmp  += __shfl_down(tmp,   8, 32);                                      
+		tmp  += __shfl_down(tmp,   4, 32);                                      
+		tmp  += __shfl_down(tmp,   2, 32);                                      
+		tmp  += __shfl_down(tmp,   1, 32);                                      
+
+		// each warp output 1 row data 
+		if(lane_id == 0) {
+			out_sm[row_id] = tmp;	
 		}
+	} // end row iterations
 
-		if(row_id1 < rows)
-		{
-			tmp1  += A[row_idx1 + col_idx]  * loc_B; 
-			tmp1  += A[row_idx1 + col_idx1] * loc_B1;
-			tmp1  += A[row_idx1 + col_idx2] * loc_B2; 
-			tmp1  += A[row_idx1 + col_idx3] * loc_B3; 
-		}
+	// output
+	if(lx < rows) {
+		C[lx] = out_sm[lx];
 	}
-
-	// warp reduction
-	tmp  += __shfl_down(tmp,  16, 32);                                      
-	tmp1  += __shfl_down(tmp1,  16, 32);                                      
-
-	tmp  += __shfl_down(tmp,   8, 32);                                      
-	tmp1  += __shfl_down(tmp1,   8, 32);                                      
-
-	tmp  += __shfl_down(tmp,   4, 32);                                      
-	tmp1  += __shfl_down(tmp1,   4, 32);                                      
-
-	tmp  += __shfl_down(tmp,   2, 32);                                      
-	tmp1  += __shfl_down(tmp1,   2, 32);                                      
-
-	tmp  += __shfl_down(tmp,   1, 32);                                      
-	tmp1  += __shfl_down(tmp1,   1, 32);                                      
-
-	// each warp output 2 row data 
-	if(lane_id == 0) {
-		C[row_id] = tmp;	
-		C[row_id1] = tmp1;	
-	}
-
 }
-
-/*
-__global__ void kernel_sgemv_1d128b (const int rows,
-		const int cols,
-		const int col_iters,
-		const float* __restrict__ A,
-		const float* __restrict__ B,
-		float* __restrict__ C)
-{
-	__shared__ float B_sm[128];
-
-	// 128 block thread = 4 (rows) x 32 (cols)
-	int gx = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
-	int lx = threadIdx.x;
-
-	// assume 1 block is responsible for  8 rows	
-	int bx_startrow = (blockIdx.x << 3);
-
-	int lane_id = threadIdx.x & 0x1F;
-	int warp_id = threadIdx.x >> 5;			// each warp  = one row
-
-	// warp 0 = row 0 4 
-	// warp 1 = row 1 5 
-	// warp 2 = row 2 6 
-	// warp 3 = row 3 7 
-	int row_id = bx_startrow + warp_id;
-	int row_id1 = row_id + 4; 
-
-	int row_idx  = row_id * cols;
-	int row_idx1 = row_idx + (cols<<2); 
-
-	float tmp  = 0.f;
-	float tmp1 = 0.f;
-
-
-	//printf("col_iters = %d \n", col_iters);
-
-	int loc_c  = lane_id; 
-	int loc_c1 = lane_id + 32;
-	int loc_c2 = lane_id + 64;
-	int loc_c3 = lane_id + 96;
-
-	// each iteration  = 128 cols
-	for (int i=0; i<col_iters; i++)
-	{
-		//int offset = i * 128;
-		int col_offset = (i<<7);
-
-		// all the 128 threads of current block load 128 data points from B to B_sm
-		int col_iter = lx + i * 128; 
-		//if(col_iter < cols)
-		//	B_sm[lx] = B[col_iter];
-		B_sm[lx] = (col_iter < cols) ?  B[col_iter] : 0.f;
-
-		__syncthreads();
-
-
-		int col_idx  = loc_c  + col_offset;
-		int col_idx1 = loc_c1 + col_offset; 
-		int col_idx2 = loc_c2 + col_offset; 
-		int col_idx3 = loc_c3 + col_offset; 
-
-		// pre load B from shared memory to reg
-		//float loc_B  = (col_idx  < cols) ?  B_sm[loc_c] : 0.f;
-		//float loc_B1 = (col_idx1 < cols) ?  B_sm[loc_c1] : 0.f;
-		//float loc_B2 = (col_idx2 < cols) ?  B_sm[loc_c2] : 0.f;
-		//float loc_B3 = (col_idx3 < cols) ?  B_sm[loc_c3] : 0.f;
-
-		float loc_B  = B_sm[loc_c];
-		float loc_B1 = B_sm[loc_c1];
-		float loc_B2 = B_sm[loc_c2];
-		float loc_B3 = B_sm[loc_c3];
-
-		// if col is out of col range, it is multiplied by 0 which add 0 to tmp
-		// this way, the inner if is removed
-		if(row_id < rows)
-		{
-			tmp  += A[row_idx  + col_idx]  * loc_B; 
-			tmp  += A[row_idx +  col_idx1] * loc_B1; 
-			tmp  += A[row_idx +  col_idx2] * loc_B2; 
-			tmp  += A[row_idx +  col_idx3] * loc_B3; 
-		}
-
-		if(row_id1 < rows)
-		{
-			tmp1  += A[row_idx1 + col_idx]  * loc_B; 
-			tmp1  += A[row_idx1 + col_idx1] * loc_B1;
-			tmp1  += A[row_idx1 + col_idx2] * loc_B2; 
-			tmp1  += A[row_idx1 + col_idx3] * loc_B3; 
-		}
-	}
-
-	// warp reduction
-	tmp  += __shfl_down(tmp,  16, 32);                                      
-	tmp1  += __shfl_down(tmp1,  16, 32);                                      
-
-	tmp  += __shfl_down(tmp,   8, 32);                                      
-	tmp1  += __shfl_down(tmp1,   8, 32);                                      
-
-	tmp  += __shfl_down(tmp,   4, 32);                                      
-	tmp1  += __shfl_down(tmp1,   4, 32);                                      
-
-	tmp  += __shfl_down(tmp,   2, 32);                                      
-	tmp1  += __shfl_down(tmp1,   2, 32);                                      
-
-	tmp  += __shfl_down(tmp,   1, 32);                                      
-	tmp1  += __shfl_down(tmp1,   1, 32);                                      
-
-	// each warp output 2 row data 
-	if(lane_id == 0) {
-		C[row_id] = tmp;	
-		C[row_id1] = tmp1;	
-	}
-
-}
-*/
 
 
 template <int CHK> void test_v1a(int rows, int cols)
@@ -364,13 +223,12 @@ template <int CHK> void test_v1a(int rows, int cols)
 	// kernel	: 4 x 32 per thread block
 	//--------------------------------------------------------------------------
     dim3 Blk_config = dim3(128, 1, 1);                                           
-	// compute how many rows to launch
-	int batch_work = BLK(rows,8);
-    dim3 Grd_config = dim3(batch_work, 1, 1);
+    dim3 Grd_config = dim3(1, 1, 1);
 
-	kernel_sgemv_1d128b <<< Grd_config, Blk_config>>>(rows, 
+	kernel_sgemv_1b128bs <<< Grd_config, Blk_config>>>(rows, 
 			cols, 
 			BLK(cols, 128), // col_iter
+			BLK(rows, 4),   // row_iter
 			d_A,
 			d_B,
 			d_C);
@@ -389,10 +247,13 @@ template <int CHK> void test_v1a(int rows, int cols)
 		printf("%f (ms)\n", milliseconds);
 	}
 
+	/*
 	//d2h_print1d(d_C, C, rows);
-//	if (check(d_C, C, rows, cols))	{
-//		printf("success!\n");
-//	}
+	if (check(d_C, C, rows, cols))	{
+		printf("success!\n");
+	}
+	*/
+
 
 	// release
 	if (A != NULL)				checkCudaErrors(cudaFreeHost(A));
@@ -431,16 +292,10 @@ int main(int argc, char **argv) {
 	test_v1a<1>(rows,   cols); 
 
 
-//	test_v1a<1>(5,   6); 
-//	test_v1a<1>(50,  100); 
-//	test_v1a<1>(120, 120); 
-//	test_v1a<1>(150, 200); 
-//	test_v1a<1>(500, 400); 
-//	test_v1a<1>(800, 700); 
-//	test_v1a<1>(1000,2000); 
-//	test_v1a<1>(1000,1000); 
-//	test_v1a<1>(2000,2000); 
 
+	///test_v1a(100,   50);
+	//test_v1a(1000,   50);
+	//test_v1a(100,   100);
 
     return(0);
 }

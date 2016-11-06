@@ -420,7 +420,7 @@ void test_v1a(int rows, int cols)
 
 	// each thread on the row, do twice work load
     dim3 Blk_config = dim3(32, 4, 1);                                           
-    dim3 Grd_config = dim3(1, BLK(rows, 8), 1);
+    dim3 Grd_config = dim3(1, BLK(rows/2, 4), 1);
 
 	kernel_sgemv_v1a <<< Grd_config, Blk_config>>>(rows, 
 			cols, 
@@ -468,18 +468,19 @@ int main(int argc, char **argv) {
 	//------------------------------------------------------------------------//
 
 	// lanch a 2d grid, where x is on column with fixed warp size 32
+	//test_v1a(50,   50);
 
 	// warm-up
 	//test_v1a(8,   128);
 	//test_v1a(8,   128);
 
-	test_v1a(10,   20);
-	test_v1a(50,   50);
-	test_v1a(100,  500);
-	test_v1a(400,   100);
-	test_v1a(1000,   50);
+	test_v1a(1000,   1000);
+	test_v1a(1000,  1000);
+
+	//test_v1a(400,   100);
 	//test_v1a(400,   100);
 
+	//test_v1a(1000,   50);
 	//test_v1a(100,   100);
 
     return(0);

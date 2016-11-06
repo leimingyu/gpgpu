@@ -248,6 +248,8 @@ __global__ void kernel_sgemv_v1a (const int rows,
 		const float* __restrict__ B,
 		float* __restrict__ C)
 {
+	// 8 (rows) x 32 (cols)
+
 	//int gx  = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	int gx  = threadIdx.x;
 	int gy  = threadIdx.y + __mul24(blockIdx.y, blockDim.y); // rows
@@ -419,13 +421,14 @@ void test_v1a(int rows, int cols)
 	//--------------------------------------------------------------------------
 
 	// each thread on the row, do twice work load
-    dim3 Blk_config = dim3(32, 4, 1);                                           
-    dim3 Grd_config = dim3(1, BLK(rows, 8), 1);
+	// 8 (rows) x 32 (cols)
+    dim3 Blk_config = dim3(32, 8, 1);                                           
+    dim3 Grd_config = dim3(1, BLK(rows, Blk_config.y * 2), 1);
 
 	kernel_sgemv_v1a <<< Grd_config, Blk_config>>>(rows, 
 			cols, 
 			//BLK(cols,32),
-			BLK(cols,128),
+			BLK(cols, 128),
 			d_A,
 			d_B,
 			d_C);

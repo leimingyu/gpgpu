@@ -6,7 +6,6 @@
 #include <fcntl.h>
 #include <unistd.h>     /* getopt() */
 
-#include <math.h>
 #include <iostream>
 
 #include <cuda_runtime.h>                                                       
@@ -72,8 +71,8 @@ int check(float *d_data, float *h_data, const int rows, const int cols)
 	int correct = 1;
 	for(int i=0; i<rows; i++) {
 		//if(h_data[i] != cpu) {
-		if(fabs(h_data[i] - cpu) > 1e-4) {
-			fprintf(stderr, "result doesn't match! pos : %d, gpu %f , cpu %f\n", 
+		if(fabs(h_data[i] - cpu) > 1e-5) {
+			fprintf(stderr, "result doesn't match! pos : %d, gpu %12.8f , cpu %12.8f\n", 
 					i, h_data[i], cpu);
 			correct = 0;
 			break;
@@ -82,7 +81,7 @@ int check(float *d_data, float *h_data, const int rows, const int cols)
 	return correct;
 }
 
-void h2d_copy(float *h_data, float *d_data, int len)
+void h2d_copy(float *h_data, float *d_data, const int len)
 {
 	cudaMemcpy(d_data, h_data, sizeof(float) * len, cudaMemcpyHostToDevice);
 }
@@ -97,162 +96,106 @@ inline int BLK(int number, int blksize)
     return (number + blksize - 1) / blksize;                                    
 }                                                                               
 
-// constant memory
-//__constant__ float const_mem[16000];
-
 //----------------------------------------------------------------------------//
-// 
+// description
+// 	each block work on 4 rows
 //----------------------------------------------------------------------------//
-__global__ void kernel_sgemv_v1a (const int rows,
+__global__ void kernel_sgemv_1b128bs (const int rows,
 		const int cols,
 		const int col_iters,
+		const int row_iters,
 		const float* __restrict__ A,
 		const float* __restrict__ B,
 		float* __restrict__ C)
 {
-	int gx  = threadIdx.x;
-	int gy  = threadIdx.y + __mul24(blockIdx.y, blockDim.y); // rows
+	__shared__ float B_sm[128];
+	__shared__ float out_sm[128];
 
-	// 2x work
-	gy = (gy << 1);
-
+	// 128 block thread = 4 (rows) x 32 (cols)
+	//int gx = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
+	int lx = threadIdx.x;
 	int lane_id = threadIdx.x & 0x1F;
+	int warp_id = threadIdx.x >> 5;			// each warp  = one row
 
-	int row_idx  = gy * cols;
+	//printf("col_iters = %d \n", col_iters);
+	int loc_c  = lane_id; 
+	int loc_c1 = lane_id + 32;
+	int loc_c2 = lane_id + 64;
+	int loc_c3 = lane_id + 96;
 
-	float tmp = 0.f;
-	float tmp1 = 0.f;
 
-
-	// each iteration, x4 work
-	for(int i=0; i<col_iters; i++)
+	for(int i=0; i<row_iters; i++)
 	{
-		//int curr_col  = gx + i * 128;
-		int curr_col  = gx + (i<<7);
-		int curr_col1 = curr_col + 32;
-		int curr_col2 = curr_col + 64;
-		int curr_col3 = curr_col + 96;
-
-		float b;
-		float b1;
-		float b2;
-		float b3;
-
-		int addr;
-		int addr1;
-		int addr2;
-		int addr3;
-
-
-		float preA;
-		float preA1;
-		float preA2;
-		float preA3;
-
-		// prefetch 1
-		if (curr_col1 < cols) 
+		//int row_offset = i * 4; 
+		int row_offset = (i<<2); 
+		// row_offset + warp i
+		int row_id = row_offset + warp_id;
+		int row_idx = row_id * cols;
+	
+		//--------------------------------------//
+		// each column iteration  = 128 cols
+		//--------------------------------------//
+		float tmp = 0.f;
+		for (int j=0; j<col_iters; j++)
 		{
-			b1 = B[curr_col1];
-			addr1 = row_idx + curr_col1;
+			//int offset = j * 128;
+			int col_offset = (j<<7);
+			// all the 128 threads of current block load 128 data points from B to B_sm
+			int col_iter = lx + col_offset; 
+			if(col_iter < cols)
+				B_sm[lx] = B[col_iter];
+			__syncthreads();
 
-			preA  = A[addr1];
-			preA1 = A[addr1 + cols];
+			int col_idx  = loc_c  + col_offset;
+			int col_idx1 = loc_c1 + col_offset; 
+			int col_idx2 = loc_c2 + col_offset; 
+			int col_idx3 = loc_c3 + col_offset; 
+
+			if(row_id < rows)
+			{
+				// work on 1st 32 threads/cols
+				// work on 2nd 32 threads/cols
+				// work on 3rd 32 threads/cols
+				// work on 4th 32 threads/cols
+				if(col_idx  < cols) tmp += A[row_idx + col_idx]  * B_sm[loc_c];
+				if(col_idx1 < cols) tmp += A[row_idx + col_idx1] * B_sm[loc_c1];
+				if(col_idx2 < cols) tmp += A[row_idx + col_idx2] * B_sm[loc_c2];
+				if(col_idx3 < cols) tmp += A[row_idx + col_idx3] * B_sm[loc_c3];
+			}
+
+		} // end column iteration
+
+		// warp reduction
+		tmp  += __shfl_down(tmp,  16, 32);                                      
+		tmp  += __shfl_down(tmp,   8, 32);                                      
+		tmp  += __shfl_down(tmp,   4, 32);                                      
+		tmp  += __shfl_down(tmp,   2, 32);                                      
+		tmp  += __shfl_down(tmp,   1, 32);                                      
+
+		// each warp output 1 row data 
+		if(lane_id == 0) {
+			out_sm[row_id] = tmp;	
 		}
+	} // end row iterations
 
-		// work 
-		if (curr_col < cols) 
-		{
-			b = B[curr_col];
-			//printf("b : %f\n", b);
-			addr = row_idx + curr_col;
-			tmp   += A[addr]           * b;
-			tmp1  += A[addr + cols]    * b;
-		}
-
-		// prefetch 2
-		if (curr_col2 < cols) 
-		{
-			b2    = B[curr_col2];
-			addr2 = row_idx + curr_col2;
-
-			preA2  = A[addr2];
-			preA3  = A[addr2 + cols];
-		}
-
-		// work 1
-		if (curr_col1 < cols) 
-		{
-			//tmp   += A[addr1]           * b1;
-			//tmp1  += A[addr1 + cols]    * b1;
-			tmp   += preA  * b1;
-			tmp1  += preA1 * b1;
-		}
-
-		// prefetch 3
-		if (curr_col3 < cols) 
-		{
-			b3    = B[curr_col3];
-			addr3 = row_idx + curr_col3;
-
-			preA   = A[addr3];
-			preA1  = A[addr3 + cols];
-		}
-
-		// work 2
-		if (curr_col2 < cols) 
-		{
-			//tmp   += A[addr2]           * b2;
-			//tmp1  += A[addr2 + cols]    * b2;
-			tmp   += preA2 * b2;
-			tmp1  += preA3 * b2;
-		}
-
-		// work 3
-		if (curr_col3 < cols) 
-		{
-			//tmp   += A[addr3]           * b3;
-			//tmp1  += A[addr3 + cols]    * b3;
-			tmp   += preA  * b3;
-			tmp1  += preA1 * b3;
-		}
-
-
-
-		//printf("tmp %f, tmp1 %f\n", tmp, tmp1);
+	// output
+	if(lx < rows) {
+		C[lx] = out_sm[lx];
 	}
-
-	// warp reduction on tmp	
-	tmp  += __shfl_down(tmp,  16, 32);                                      
-	tmp1 += __shfl_down(tmp1, 16, 32);                                      
-
-	tmp  += __shfl_down(tmp,   8, 32);                                      
-	tmp1 += __shfl_down(tmp1,  8, 32);                                      
-
-	tmp  += __shfl_down(tmp,   4, 32);                                      
-	tmp1 += __shfl_down(tmp1,  4, 32);                                      
-
-	tmp  += __shfl_down(tmp,   2, 32);                                      
-	tmp1 += __shfl_down(tmp1,  2, 32);                                      
-
-	tmp  += __shfl_down(tmp,   1, 32);                                      
-	tmp1 += __shfl_down(tmp1,  1, 32);                                      
-
-	if(lane_id == 0) {
-		C[gy]      = tmp;
-		C[gy + 1]  = tmp1;
-	}
-
 }
 
 
-template <int CHK> void test_v1a(int rows, int cols)
+void test_v1a(int rows, int cols)
 {
-	double  flop = rows * (cols + cols) + (cols + cols);
-	double  gflop = flop * 1e-9; 
+	cudaDeviceProp prop;
+	checkCudaErrors( cudaGetDeviceProperties(&prop, 0) );
+	//int sm_num =  prop.multiProcessorCount;
+	//printf("sm : %d\n", sm_num);
 
 	cudaEvent_t startEvent, stopEvent;
 	checkCudaErrors( cudaEventCreate(&startEvent) );
 	checkCudaErrors( cudaEventCreate(&stopEvent) );
+
 	// host
 	float *A;
 	float *B;
@@ -276,41 +219,48 @@ template <int CHK> void test_v1a(int rows, int cols)
 	// copy data to device
 	h2d_copy(A, d_A, rows * cols);
 	h2d_copy(B, d_B, cols);
-	h2d_copy(C, d_C, cols);
+	//h2d_copy(C, d_C, rows);
+
 	// start gpu timing
 	cudaEventRecord(startEvent);
 	//--------------------------------------------------------------------------
 	// kernel
+	// 	each block for one row of A
 	//--------------------------------------------------------------------------
-    dim3 Blk_config = dim3(32, 8, 1);                                           
-    dim3 Grd_config = dim3(1, BLK(rows, 16), 1);
 
-	kernel_sgemv_v1a <<< Grd_config, Blk_config>>>(rows, 
+	// bs 128, max 16 blks per sm
+	// gtx 970 has 13 smx
+	// current launch 1 block : 128 threads
+    dim3 Blk_config = dim3(128, 1, 1);                                           
+
+	// compute how many rows to launch
+	//int batch_work = BLK(rows,4);
+    //dim3 Grd_config = dim3(batch_work, 1, 1);
+    dim3 Grd_config = dim3(1, 1, 1);
+
+
+	//printf("iters: %d\n", BLK(cols, 4));
+
+	kernel_sgemv_1b128bs <<< Grd_config, Blk_config>>>(rows, 
 			cols, 
-			//BLK(cols,32),
-			//BLK(cols,64),
-			BLK(cols, 128),
+			BLK(cols, 128), // col_iter
+			BLK(rows, 4),   // row_iter
 			d_A,
 			d_B,
 			d_C);
+
 	// end of gpu timing
 	cudaEventRecord(stopEvent);
 	cudaEventSynchronize(stopEvent); 
 
-	if(CHK)
-	{
-		float milliseconds = 0;
-		cudaEventElapsedTime(&milliseconds, startEvent, stopEvent);
-		//cout << milliseconds << " (ms)" << endl;
-		printf("%f (ms)\n", milliseconds);
+	float milliseconds = 0;
+	cudaEventElapsedTime(&milliseconds, startEvent, stopEvent);
+	cout << milliseconds << " (ms)" << endl;
 
-		printf("GFLOPS %f \n",  gflop / (milliseconds * 1e-3));
+	//d2h_print1d(d_C, C, rows);
+	if (check(d_C, C, rows, cols))	{
+		printf("success!\n");
 	}
-
-	////d2h_print1d(d_C, C, rows);
-	//if (check(d_C, C, rows, cols))	{
-	//	printf("success!\n");
-	//}
 
 
 	// release
@@ -321,40 +271,26 @@ template <int CHK> void test_v1a(int rows, int cols)
 	if (d_A != NULL)			checkCudaErrors(cudaFree(d_A));
 	if (d_B != NULL) 			checkCudaErrors(cudaFree(d_B));
 	if (d_C != NULL)			checkCudaErrors(cudaFree(d_C));
+
+	cudaDeviceReset();
 }
+
+
 
 int main(int argc, char **argv) {
 
-	//cudaDeviceProp prop;
-	//checkCudaErrors( cudaGetDeviceProperties(&prop, 0) );
-	//printf("Device: %s\n", prop.name);
+	cudaDeviceProp prop;
+	checkCudaErrors( cudaGetDeviceProperties(&prop, 0) );
+	printf("Device: %s\n", prop.name);
 
-	int rows = atoi(argv[1]);                                                   
-	int cols = atoi(argv[2]);                                                   
-	//printf("rows %d, cols %d\n", rows, cols);
+	int rows = atoi(argv[1]);
+	int cols = atoi(argv[2]);
 
-	// 10K
-	//test(100,   100);
-	
-	//------------------------------------------------------------------------//
-	// case study 1
-	//------------------------------------------------------------------------//
-
-	// lanch a 2d grid, where x is on column with fixed warp size 32
-	//test_v1a(50,   50);
-
-	// warm-up                                                                  
-	for(int i=0; i<10; i++)                                                     
-		test_v1a<0>(rows,   cols);                                                  
-
-	test_v1a<1>(rows,   cols); 
-
-
-
-	///test_v1a(100,   50);
-	//test_v1a(1000,   50);
-	//test_v1a(100,   100);
+	// 32 x 100
+//	for(int i=0; i<10; i++)
+//		test_v1a(rows,   cols);
+//
+	test_v1a(rows,   cols);
 
     return(0);
 }
-

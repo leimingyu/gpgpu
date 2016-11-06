@@ -248,6 +248,8 @@ __global__ void kernel_sgemv_v1a (const int rows,
 		const float* __restrict__ B,
 		float* __restrict__ C)
 {
+	// the block dim is 8 x 16 
+
 	//int gx  = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	int gx  = threadIdx.x;
 	int gy  = threadIdx.y + __mul24(blockIdx.y, blockDim.y); // rows
@@ -255,6 +257,7 @@ __global__ void kernel_sgemv_v1a (const int rows,
 	// 2x work
 	gy = (gy << 1);
 
+	// 16 cols, instead of 32
 	int lane_id = threadIdx.x & 0x1F;
 
 	int row_idx  = gy * cols;
@@ -267,11 +270,11 @@ __global__ void kernel_sgemv_v1a (const int rows,
 	// each iteration, x4 work
 	for(int i=0; i<col_iters; i++)
 	{
-		//int curr_col  = gx + i * 128;
-		int curr_col  = gx + (i<<7);
-		int curr_col1 = curr_col + 32;
-		int curr_col2 = curr_col + 64;
-		int curr_col3 = curr_col + 96;
+		//int curr_col  = gx + i * 64;
+		int curr_col  = gx + (i<<6);
+		int curr_col1 = curr_col + 16;
+		int curr_col2 = curr_col + 32;
+		int curr_col3 = curr_col + 48;
 
 		float b;
 		float b1;
@@ -362,20 +365,20 @@ __global__ void kernel_sgemv_v1a (const int rows,
 	}
 
 	// warp reduction on tmp	
-	tmp  += __shfl_down(tmp,  16, 32);                                      
-	tmp1 += __shfl_down(tmp1, 16, 32);                                      
+	//tmp  += __shfl_down(tmp,  16, 32);                                      
+	//tmp1 += __shfl_down(tmp1, 16, 32);                                      
 
-	tmp  += __shfl_down(tmp,   8, 32);                                      
-	tmp1 += __shfl_down(tmp1,  8, 32);                                      
+	tmp  += __shfl_down(tmp,   8, 16);                                      
+	tmp1 += __shfl_down(tmp1,  8, 16);                                      
 
-	tmp  += __shfl_down(tmp,   4, 32);                                      
-	tmp1 += __shfl_down(tmp1,  4, 32);                                      
+	tmp  += __shfl_down(tmp,   4, 16);                                      
+	tmp1 += __shfl_down(tmp1,  4, 16);                                      
 
-	tmp  += __shfl_down(tmp,   2, 32);                                      
-	tmp1 += __shfl_down(tmp1,  2, 32);                                      
+	tmp  += __shfl_down(tmp,   2, 16);                                      
+	tmp1 += __shfl_down(tmp1,  2, 16);                                      
 
-	tmp  += __shfl_down(tmp,   1, 32);                                      
-	tmp1 += __shfl_down(tmp1,  1, 32);                                      
+	tmp  += __shfl_down(tmp,   1, 16);                                      
+	tmp1 += __shfl_down(tmp1,  1, 16);                                      
 
 	if(lane_id == 0) {
 		C[gy]      = tmp;
@@ -419,13 +422,14 @@ void test_v1a(int rows, int cols)
 	//--------------------------------------------------------------------------
 
 	// each thread on the row, do twice work load
-    dim3 Blk_config = dim3(32, 4, 1);                                           
-    dim3 Grd_config = dim3(1, BLK(rows, 8), 1);
+	// 8 (rows) x 16 (cols)
+    dim3 Blk_config = dim3(16, 8, 1);                                           
+    dim3 Grd_config = dim3(1, BLK(rows, 16), 1);
 
 	kernel_sgemv_v1a <<< Grd_config, Blk_config>>>(rows, 
 			cols, 
 			//BLK(cols,32),
-			BLK(cols,128),
+			BLK(cols, 64),
 			d_A,
 			d_B,
 			d_C);
