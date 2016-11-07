@@ -1,0 +1,17 @@
+To install openblas, you need gfortran first. 
+sudo apt-get install git python-dev gfortran
+
+Then I use the following commands to install openblas. (https://hunseblog.wordpress.com/2014/09/15/installing-numpy-and-openblas/)
+git clone https://github.com/xianyi/OpenBLAS
+cd OpenBLAS
+make FC=gfortran
+sudo make PREFIX=/opt/openblas install
+
+sudo vim /etc/ld.so.conf.d/openblas.conf
+add /opt/openblas/lib
+sudo ldconfig
+
+In the bashrc file, I add the openblas source dir there
+# openblas                                                                      
+export OPENBLASDIR=/opt/openblas 
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/openblas/lib
