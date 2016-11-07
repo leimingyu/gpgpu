@@ -15,4 +15,4 @@ sgemv1: sgemv1.c
 	g++ -I$(OPENBLAS_INC) -L$(OPENBLAS_LIB) $+ -o $@  $(LIBS)
 
 clean:
-	rm sgemm sgemv sgemv1
+	rm sgemm sgemv sgemv1 sgemm
