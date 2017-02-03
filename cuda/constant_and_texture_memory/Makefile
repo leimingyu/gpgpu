@@ -35,14 +35,15 @@ endif
 #-----------------------------------------------------------------------------#
 # Build Targets
 #-----------------------------------------------------------------------------#
-EXE = main 
 
-all: $(EXE) 
+all: main tex3d
 
-%: %.cu
+main: main.cu
 	$(NVC) $(NV_INC) $(NV_LIB) $(NVCC_FLAGS) $(GENCODE_FLAGS) -o $@ $< $(LIB_LINKER)
 
+tex3d: tex3d.cu
+	$(NVC) $(NV_INC) $(NV_LIB) $(NVCC_FLAGS) $(GENCODE_FLAGS) -o $@ $< $(LIB_LINKER)
 
 .PHONY: clean
 clean:
-	rm -rf $(EXE) 
+	rm -rf  main tex3d

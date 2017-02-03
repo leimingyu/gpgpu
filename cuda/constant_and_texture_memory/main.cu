@@ -42,9 +42,9 @@ __global__ void kernel_v1_part1(
 	float data = loc_N * loc_beq;
 
 	// use shuffle down within the warp
-    for (int i=16; i>0; i>>=1 ) {                                              
-        data += __shfl_down(data, i, 32);                                      
-    }
+	for (int i=16; i>0; i>>=1 ) {                                              
+		data += __shfl_down(data, i, 32);                                      
+	}
 
 	if(lane_id == 0) {
 		Nbeq_partial[gy * gridDim.x + blockIdx.x] = data;
@@ -121,9 +121,9 @@ __global__ void kernel_v3_part1(const float* __restrict__ N,
 	float data = loc_N * loc_beq;
 
 	// use shuffle down within the warp
-    for (int i=8; i>0; i>>=1 ) {                                              
-        data += __shfl_down(data, i, 16);                                      
-    }
+	for (int i=8; i>0; i>>=1 ) {                                              
+		data += __shfl_down(data, i, 16);                                      
+	}
 
 	if(lane_id == 0) {
 		Nbeq_partial[gy * gridDim.x + blockIdx.x] = data;
@@ -169,31 +169,31 @@ int main(void)
 void run_ver1()
 {
 	float *N;                                                                   
-    float *beq;                                                                 
-    float *Nbeq_partial;                                                        
-    float *Nbeq;                                                                
-                                                                                
-    int rows = 1000;                                                            
-    int cols = 1000;                                                            
-                                                                                
-    int r = (rows == 1) ? 1 : BLK(rows, 32) * 32;                               
-    int c = (cols == 1) ? 1 : BLK(cols, 32) * 32;                               
-                                                                                
-    // x cols, y rows                                                           
-    dim3 Blk_part1 = dim3(32, 32, 1);                                           
-    dim3 Grd_part1 = dim3(BLK(c, 32), BLK(r,32), 1);                            
-                                                                                
-    dim3 Blk_part2 = dim3(32, 1, 1);                                            
-    dim3 Grd_part2 = dim3(BLK(r, 32), 1, 1);                                    
-                                                                                
-    int partial_r = r;                                                          
-    int partial_c = Grd_part1.x;                                                
-                                                                                
-    //cudaMallocManaged((void**)&N,   r * c * FLT_SIZE);                          
+	float *beq;                                                                 
+	float *Nbeq_partial;                                                        
+	float *Nbeq;                                                                
+
+	int rows = 1000;                                                            
+	int cols = 1000;                                                            
+
+	int r = (rows == 1) ? 1 : BLK(rows, 32) * 32;                               
+	int c = (cols == 1) ? 1 : BLK(cols, 32) * 32;                               
+
+	// x cols, y rows                                                           
+	dim3 Blk_part1 = dim3(32, 32, 1);                                           
+	dim3 Grd_part1 = dim3(BLK(c, 32), BLK(r,32), 1);                            
+
+	dim3 Blk_part2 = dim3(32, 1, 1);                                            
+	dim3 Grd_part2 = dim3(BLK(r, 32), 1, 1);                                    
+
+	int partial_r = r;                                                          
+	int partial_c = Grd_part1.x;                                                
+
+	//cudaMallocManaged((void**)&N,   r * c * FLT_SIZE);                          
 	N = (float*) malloc(r * c * FLT_SIZE);
-    cudaMallocManaged((void**)&beq, c * FLT_SIZE);                              
-    cudaMallocManaged((void**)&Nbeq, c * FLT_SIZE);                             
-    cudaMallocManaged((void**)&Nbeq_partial , partial_r * partial_c * FLT_SIZE);
+	cudaMallocManaged((void**)&beq, c * FLT_SIZE);                              
+	cudaMallocManaged((void**)&Nbeq, c * FLT_SIZE);                             
+	cudaMallocManaged((void**)&Nbeq_partial , partial_r * partial_c * FLT_SIZE);
 
 
 	for(int i=0; i<r; i++) {
@@ -213,8 +213,8 @@ void run_ver1()
 	// bining texture
 	//---------------------------//
 	//checkCudaErrors(cudaBindTexture2D(NULL, N_tex, N, c, r, c* sizeof(float)));
-	    //prepare channel format descriptor for passing texture into kernels
-    cudaChannelFormatDesc floattex = cudaCreateChannelDesc<float>();
+	//prepare channel format descriptor for passing texture into kernels
+	cudaChannelFormatDesc floattex = cudaCreateChannelDesc<float>();
 	cudaArray *cuArray_N;
 	// width = col, hight = row
 	checkCudaErrors(cudaMallocArray(&cuArray_N,                                   
@@ -230,55 +230,55 @@ void run_ver1()
 				cudaMemcpyHostToDevice)); 
 
 	// Bind the array to the texture                                            
-    checkCudaErrors(cudaBindTextureToArray(tex_N, cuArray_N));
+	checkCudaErrors(cudaBindTextureToArray(tex_N, cuArray_N));
 
 
 
-    // gpu timer                                                                
-    float gpuTime;                                                              
-    cudaEvent_t startEvent, stopEvent;                                          
-    checkCudaErrors( cudaEventCreate(&startEvent) );                            
-    checkCudaErrors( cudaEventCreate(&stopEvent) );                             
-    cudaEventRecord(startEvent);                                                
-                                                                                
+	// gpu timer                                                                
+	float gpuTime;                                                              
+	cudaEvent_t startEvent, stopEvent;                                          
+	checkCudaErrors( cudaEventCreate(&startEvent) );                            
+	checkCudaErrors( cudaEventCreate(&stopEvent) );                             
+	cudaEventRecord(startEvent);                                                
+
 	//------------------------------------------------------------------------//
 	// version 1
 	//------------------------------------------------------------------------//
-    kernel_v1_part1 <<< Grd_part1, Blk_part1 >>> (
+	kernel_v1_part1 <<< Grd_part1, Blk_part1 >>> (
 			//N,                  
-            //beq,                                                                
-            r,                                                                  
-            c,                                                                  
-            Nbeq_partial);                                                      
-                                                                                
-                                                                                
-    kernel_v1_part2 <<< Grd_part2, Blk_part2 >>> (                    
-            Nbeq_partial,                                                       
-            partial_c,                                                          
-            Nbeq);                                                              
-                                                                                
-                                                                                
-    cudaEventRecord(stopEvent);                                                 
-    cudaEventSynchronize(stopEvent);                                            
-    cudaEventElapsedTime(&gpuTime,startEvent,stopEvent);                        
-    printf("=>\t\t\tGPU execution time : %f ms\n", gpuTime);                    
-                                                                                
-                                                                                
-    cudaDeviceSynchronize();                                                    
+			//beq,                                                                
+			r,                                                                  
+			c,                                                                  
+			Nbeq_partial);                                                      
+
+
+	kernel_v1_part2 <<< Grd_part2, Blk_part2 >>> (                    
+			Nbeq_partial,                                                       
+			partial_c,                                                          
+			Nbeq);                                                              
+
+
+	cudaEventRecord(stopEvent);                                                 
+	cudaEventSynchronize(stopEvent);                                            
+	cudaEventElapsedTime(&gpuTime,startEvent,stopEvent);                        
+	printf("=>\t\t\tGPU execution time : %f ms\n", gpuTime);                    
+
+
+	cudaDeviceSynchronize();                                                    
 
 	checkCudaErrors(cudaUnbindTexture(tex_N));
 	getLastCudaError("Kernel execution failed");
 
 	printf("%f\n", Nbeq[0]);
 	printf("%f\n", Nbeq[c- 1]);
-                                                                                
-    //cudaFreeHost(N);                                                            
-    free(N);                                                            
+
+	//cudaFreeHost(N);                                                            
+	free(N);                                                            
 	checkCudaErrors(cudaFreeArray(cuArray_N));
 
-    cudaFreeHost(beq);                                                          
-    cudaFreeHost(Nbeq);                                                         
-    cudaFreeHost(Nbeq_partial);  
+	cudaFreeHost(beq);                                                          
+	cudaFreeHost(Nbeq);                                                         
+	cudaFreeHost(Nbeq_partial);  
 
 }
 
@@ -288,22 +288,22 @@ void run_ver1()
 void run_ver2()
 {
 	float *N;                                                                   
-    float *beq;                                                                 
-    float *Nbeq;                                                                
-                                                                                
-    int rows = 1000;                                                            
-    int cols = 1000;                                                            
-                                                                                
-    int r = (rows == 1) ? 1 : BLK(rows, 32) * 32;                               
-    int c = (cols == 1) ? 1 : BLK(cols, 32) * 32;                               
-                                                                                
-    // x cols, y rows                                                           
-    dim3 blkdim= dim3(32, 32, 1);                                           
-    dim3 grddim= dim3(1,  BLK(r,32), 1);                            
-                                                                                
-    cudaMallocManaged((void**)&N,   r * c * FLT_SIZE);                          
-    cudaMallocManaged((void**)&beq, c * FLT_SIZE);                              
-    cudaMallocManaged((void**)&Nbeq, c * FLT_SIZE);                             
+	float *beq;                                                                 
+	float *Nbeq;                                                                
+
+	int rows = 1000;                                                            
+	int cols = 1000;                                                            
+
+	int r = (rows == 1) ? 1 : BLK(rows, 32) * 32;                               
+	int c = (cols == 1) ? 1 : BLK(cols, 32) * 32;                               
+
+	// x cols, y rows                                                           
+	dim3 blkdim= dim3(32, 32, 1);                                           
+	dim3 grddim= dim3(1,  BLK(r,32), 1);                            
+
+	cudaMallocManaged((void**)&N,   r * c * FLT_SIZE);                          
+	cudaMallocManaged((void**)&beq, c * FLT_SIZE);                              
+	cudaMallocManaged((void**)&Nbeq, c * FLT_SIZE);                             
 
 
 	for(int i=0; i<r; i++) {
@@ -315,35 +315,35 @@ void run_ver2()
 	for(int j=0; j<c; j++) {
 		beq[j] = 3.f;
 	}	
-                                                                                
-    // gpu timer                                                                
-    float gpuTime;                                                              
-    cudaEvent_t startEvent, stopEvent;                                          
-    checkCudaErrors( cudaEventCreate(&startEvent) );                            
-    checkCudaErrors( cudaEventCreate(&stopEvent) );                             
-    cudaEventRecord(startEvent);                                                
 
-    kernel_v2 <<< grddim, blkdim >>> (N,                  
-            beq,                                                                
-            c,                                                                  
+	// gpu timer                                                                
+	float gpuTime;                                                              
+	cudaEvent_t startEvent, stopEvent;                                          
+	checkCudaErrors( cudaEventCreate(&startEvent) );                            
+	checkCudaErrors( cudaEventCreate(&stopEvent) );                             
+	cudaEventRecord(startEvent);                                                
+
+	kernel_v2 <<< grddim, blkdim >>> (N,                  
+			beq,                                                                
+			c,                                                                  
 			c>>5,
-            Nbeq);                                                      
+			Nbeq);                                                      
 
-                                                                                
-    cudaEventRecord(stopEvent);                                                 
-    cudaEventSynchronize(stopEvent);                                            
-    cudaEventElapsedTime(&gpuTime,startEvent,stopEvent);                        
-    printf("=>\t\t\tGPU execution time : %f ms\n", gpuTime);                    
-                                                                                
-                                                                                
-    cudaDeviceSynchronize();                                                    
+
+	cudaEventRecord(stopEvent);                                                 
+	cudaEventSynchronize(stopEvent);                                            
+	cudaEventElapsedTime(&gpuTime,startEvent,stopEvent);                        
+	printf("=>\t\t\tGPU execution time : %f ms\n", gpuTime);                    
+
+
+	cudaDeviceSynchronize();                                                    
 
 	printf("%f\n", Nbeq[0]);
 	printf("%f\n", Nbeq[c- 1]);
-                                                                                
-    cudaFreeHost(N);                                                            
-    cudaFreeHost(beq);                                                          
-    cudaFreeHost(Nbeq);                                                         
+
+	cudaFreeHost(N);                                                            
+	cudaFreeHost(beq);                                                          
+	cudaFreeHost(Nbeq);                                                         
 }
 
 
@@ -353,30 +353,30 @@ void run_ver2()
 void run_ver3()
 {
 	float *N;                                                                   
-    float *beq;                                                                 
-    float *Nbeq_partial;                                                        
-    float *Nbeq;                                                                
-                                                                                
-    int rows = 1000;                                                            
-    int cols = 1000;                                                            
-                                                                                
-    int r = (rows == 1) ? 1 : BLK(rows, 32) * 32;                               
-    int c = (cols == 1) ? 1 : BLK(cols, 32) * 32;                               
-                                                                                
-    // x cols, y rows                                                           
-    dim3 Blk_part1 = dim3(16, 32, 1);                                           
-    dim3 Grd_part1 = dim3(BLK(c, 16), BLK(r,32), 1);                            
-                                                                                
-    dim3 Blk_part2 = dim3(32, 1, 1);                                            
-    dim3 Grd_part2 = dim3(BLK(r, 32), 1, 1);                                    
-                                                                                
-    int partial_r = r;                                                          
-    int partial_c = Grd_part1.x;                                                
-                                                                                
-    cudaMallocManaged((void**)&N,   r * c * FLT_SIZE);                          
-    cudaMallocManaged((void**)&beq, c * FLT_SIZE);                              
-    cudaMallocManaged((void**)&Nbeq, c * FLT_SIZE);                             
-    cudaMallocManaged((void**)&Nbeq_partial , partial_r * partial_c * FLT_SIZE);
+	float *beq;                                                                 
+	float *Nbeq_partial;                                                        
+	float *Nbeq;                                                                
+
+	int rows = 1000;                                                            
+	int cols = 1000;                                                            
+
+	int r = (rows == 1) ? 1 : BLK(rows, 32) * 32;                               
+	int c = (cols == 1) ? 1 : BLK(cols, 32) * 32;                               
+
+	// x cols, y rows                                                           
+	dim3 Blk_part1 = dim3(16, 32, 1);                                           
+	dim3 Grd_part1 = dim3(BLK(c, 16), BLK(r,32), 1);                            
+
+	dim3 Blk_part2 = dim3(32, 1, 1);                                            
+	dim3 Grd_part2 = dim3(BLK(r, 32), 1, 1);                                    
+
+	int partial_r = r;                                                          
+	int partial_c = Grd_part1.x;                                                
+
+	cudaMallocManaged((void**)&N,   r * c * FLT_SIZE);                          
+	cudaMallocManaged((void**)&beq, c * FLT_SIZE);                              
+	cudaMallocManaged((void**)&Nbeq, c * FLT_SIZE);                             
+	cudaMallocManaged((void**)&Nbeq_partial , partial_r * partial_c * FLT_SIZE);
 
 
 	for(int i=0; i<r; i++) {
@@ -388,43 +388,43 @@ void run_ver3()
 	for(int j=0; j<c; j++) {
 		beq[j] = 3.f;
 	}	
-                                                                                
-    // gpu timer                                                                
-    float gpuTime;                                                              
-    cudaEvent_t startEvent, stopEvent;                                          
-    checkCudaErrors( cudaEventCreate(&startEvent) );                            
-    checkCudaErrors( cudaEventCreate(&stopEvent) );                             
-    cudaEventRecord(startEvent);                                                
-                                                                                
+
+	// gpu timer                                                                
+	float gpuTime;                                                              
+	cudaEvent_t startEvent, stopEvent;                                          
+	checkCudaErrors( cudaEventCreate(&startEvent) );                            
+	checkCudaErrors( cudaEventCreate(&stopEvent) );                             
+	cudaEventRecord(startEvent);                                                
+
 	//------------------------------------------------------------------------//
 	// version 1
 	//------------------------------------------------------------------------//
-    kernel_v3_part1 <<< Grd_part1, Blk_part1 >>> (N,                  
-            beq,                                                                
-            r,                                                                  
-            c,                                                                  
-            Nbeq_partial);                                                      
-                                                                                
-                                                                                
-    kernel_v3_part2 <<< Grd_part2, Blk_part2 >>> (                    
-            Nbeq_partial,                                                       
-            partial_c,                                                          
-            Nbeq);                                                              
-                                                                                
-                                                                                
-    cudaEventRecord(stopEvent);                                                 
-    cudaEventSynchronize(stopEvent);                                            
-    cudaEventElapsedTime(&gpuTime,startEvent,stopEvent);                        
-    printf("=>\t\t\tGPU execution time : %f ms\n", gpuTime);                    
-                                                                                
-                                                                                
-    cudaDeviceSynchronize();                                                    
+	kernel_v3_part1 <<< Grd_part1, Blk_part1 >>> (N,                  
+			beq,                                                                
+			r,                                                                  
+			c,                                                                  
+			Nbeq_partial);                                                      
+
+
+	kernel_v3_part2 <<< Grd_part2, Blk_part2 >>> (                    
+			Nbeq_partial,                                                       
+			partial_c,                                                          
+			Nbeq);                                                              
+
+
+	cudaEventRecord(stopEvent);                                                 
+	cudaEventSynchronize(stopEvent);                                            
+	cudaEventElapsedTime(&gpuTime,startEvent,stopEvent);                        
+	printf("=>\t\t\tGPU execution time : %f ms\n", gpuTime);                    
+
+
+	cudaDeviceSynchronize();                                                    
 
 	printf("%f\n", Nbeq[0]);
 	printf("%f\n", Nbeq[c- 1]);
-                                                                                
-    cudaFreeHost(N);                                                            
-    cudaFreeHost(beq);                                                          
-    cudaFreeHost(Nbeq);                                                         
-    cudaFreeHost(Nbeq_partial);  
+
+	cudaFreeHost(N);                                                            
+	cudaFreeHost(beq);                                                          
+	cudaFreeHost(Nbeq);                                                         
+	cudaFreeHost(Nbeq_partial);  
 }
